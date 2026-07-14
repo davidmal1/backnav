@@ -1,0 +1,17 @@
+{
+    "KPlugin": {
+        "Id": "tabnav",
+        "Name": "TabNav",
+        "Description": "TabNav KWin event producer",
+        "Version": "0.1.0",
+        "License": "MIT",
+        "Authors": [
+            {
+                "Name": "David Malcolm"
+            }
+        ]
+    },
+    "KPackageStructure": "KWin/Script",
+    "X-Plasma-API": "javascript",
+    "X-Plasma-MainScript": "contents/code/main.js"
+}
