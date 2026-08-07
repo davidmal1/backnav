@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "BackNav",
+  "version": "0.1",
+
+  "description": "Provides BackNav with active browser tab information.",
+
+  "permissions": [
+    "tabs",
+    "storage"
+  ],
+
+  "host_permissions": [
+    "<all_urls>"
+  ],
+
+  "background": {
+    "service_worker": "background.js",
+    "scripts": ["background.js"]
+  },
+
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  },
+
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "backnav@local"
+    }
+  }
+}
