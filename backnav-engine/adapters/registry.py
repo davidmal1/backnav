@@ -1,3 +1,4 @@
+from adapters.kate import KateAdapter
 from adapters.konsole import KonsoleAdapter
 
 # One adapter instance per supported app - shared between NavigationEngine
@@ -5,7 +6,7 @@ from adapters.konsole import KonsoleAdapter
 # recording history) and NavigatorService (which needs to restore a
 # previously-resolved tab by its restore_type when acting on a back/forward
 # request), without either of those knowing about the other's lookup.
-_ADAPTERS = (KonsoleAdapter(),)
+_ADAPTERS = (KonsoleAdapter(), KateAdapter())
 
 ADAPTERS_BY_APP = {adapter.app_name: adapter for adapter in _ADAPTERS}
 ADAPTERS_BY_RESTORE_TYPE = {adapter.restore_type: adapter for adapter in _ADAPTERS}
