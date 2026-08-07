@@ -57,12 +57,18 @@ class KWinMonitor:
                 yield WindowClosed(window_id=window["id"], timestamp=timestamp)
                 continue
 
+            # True unless the script explicitly says otherwise - keeps
+            # older-format lines (or a stale/un-upgraded script instance)
+            # behaving as "normal" rather than getting silently dropped.
+            normal = data.get("flags", {}).get("normal", True)
+
             if event_type == "caption":
                 yield WindowCaptionChanged(
                     app=window["app"],
                     window_id=window["id"],
                     pid=window["pid"],
                     title=window["title"],
+                    normal=normal,
                     timestamp=timestamp,
                 )
                 continue
@@ -72,5 +78,6 @@ class KWinMonitor:
                 window_id=window["id"],
                 pid=window["pid"],
                 title=window["title"],
+                normal=normal,
                 timestamp=timestamp,
             )

@@ -64,6 +64,18 @@ class NavigationEngine:
         event_bus.subscribe(WindowCaptionChanged, self._on_window_caption_changed)
 
     def _on_focus_changed(self, event: FocusChanged):
+        # Transient/modal dialogs (an app's "Open File"/"Close Document"
+        # prompts, etc) report the exact same `app` resourceClass as their
+        # owning window. Treating one like a real focus change would let an
+        # adapter-tracked app's dialog get misattributed to whatever the
+        # app's *main* window happens to have open right now (adapters
+        # resolve by pid, and dialogs share their owning process's pid),
+        # and would also stomp _current_window_id - silently breaking
+        # caption-change detection on the REAL window until its next
+        # genuine focus event arrives. Bail out before touching any state.
+        if not event.normal:
+            return
+
         self._current_app = event.app
         self._current_window_id = event.window_id
 
@@ -142,6 +154,11 @@ class NavigationEngine:
                 self._history.mark_tab_dead(item.restore_id)
 
     def _on_window_caption_changed(self, event: WindowCaptionChanged):
+        # See _on_focus_changed - a dialog's caption changing is just as
+        # misattributable as its focus gain would be.
+        if not event.normal:
+            return
+
         # Only means anything for the window that's actually focused right
         # now - a caption change on a background window isn't a navigation,
         # and _current_window_id is the same liveness signal _on_focus_changed

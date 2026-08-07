@@ -14,3 +14,12 @@ class FocusChanged(Event):
     # that have an adapter. Defaults to 0 for callers (tests, mainly)
     # that don't care about tab-adapter apps.
     pid: int = 0
+
+    # KWin's window.normalWindow - False for transient/modal dialogs (an
+    # app's "Open File"/"Close Document" prompts, etc). These report the
+    # exact same `app` resourceClass as their owning window, so without
+    # this an adapter-tracked app's dialog would get misattributed to
+    # whatever the app's *main* window happens to have open right now -
+    # see NavigationEngine._on_focus_changed. Defaults to True for callers
+    # (tests, mainly) that don't care about the distinction.
+    normal: bool = True

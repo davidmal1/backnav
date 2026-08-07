@@ -19,3 +19,9 @@ class WindowCaptionChanged(Event):
     window_id: str
     pid: int
     title: str
+
+    # See FocusChanged.normal - a transient/modal dialog's caption changing
+    # (rare, but e.g. a "Save As" filename field updating the title) is
+    # just as misattributable as its focus gain would be. Defaults to True
+    # for callers (tests, mainly) that don't care about the distinction.
+    normal: bool = True

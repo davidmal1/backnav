@@ -55,6 +55,12 @@ function emitCaptionChanged(window)
             app: window.resourceClass,
             pid: window.pid,
             title: window.caption
+        },
+
+        flags: {
+            transient: window.transient,
+            modal: window.modal,
+            normal: window.normalWindow
         }
     }));
 }
