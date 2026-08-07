@@ -1,0 +1,236 @@
+from adapters.registry import ADAPTERS_BY_APP
+from core.events.browser_tab_changed import BrowserTabChanged
+from core.events.browser_tab_closed import BrowserTabClosed
+from core.events.focus_changed import FocusChanged
+from core.events.window_caption_changed import WindowCaptionChanged
+from core.events.window_closed import WindowClosed
+from core.history_manager import HistoryManager
+from core.models.focus_item import FocusItem
+
+# Resource classes (KWin's `app`) that host the browser extension.
+# There's no shared ID space between a KWin window and a Chromium
+# `windowId`, so we can't correlate a tab event to a specific browser
+# window - we treat "a browser" as a single logical window, which
+# matches every scenario this project has designed for so far.
+BROWSER_APPS = {
+    "brave-browser",
+    "vivaldi-stable",
+    "Vivaldi-snap",
+    "google-chrome",
+    "chromium-browser",
+    "chromium",
+    "microsoft-edge",
+    "firefox",
+    "firefox_firefox",
+}
+
+
+class NavigationEngine:
+    """
+    Merges KWin focus events and browser tab events into a single
+    navigation history.
+    """
+
+    def __init__(self, event_bus, history_manager=None):
+        self._history = history_manager or HistoryManager()
+        self._current_app = None
+        self._current_window_id = None
+
+        # (WebSocket connection, browser-native windowId) -> the KWin
+        # window it belongs to, learned the first time that browser
+        # window is seen focused. Keyed by connection rather than the
+        # `browser` field's family name ("chromium"/"firefox"), since two
+        # windows of the same family - e.g. Vivaldi and Brave both
+        # reporting "chromium" - would otherwise collide and each pick up
+        # the other's tab.
+        self._kwin_window_for_browser_window = {}
+
+        # KWin window_id -> latest known tab for that window, so
+        # refocusing it picks up tab activity that happened while it was
+        # in the background.
+        self._latest_tab_by_kwin_window = {}
+
+        # KWin window_id -> latest known adapter restore_id for that
+        # window (Konsole session, etc). Mirrors _latest_tab_by_kwin_window
+        # for non-browser tabbed apps; kept separate since the two paths
+        # populate it differently (adapter resolution vs. browser
+        # extension messages) but serve the exact same purpose below.
+        self._latest_adapter_restore_by_kwin_window = {}
+
+        event_bus.subscribe(FocusChanged, self._on_focus_changed)
+        event_bus.subscribe(BrowserTabChanged, self._on_browser_tab_changed)
+        event_bus.subscribe(WindowClosed, self._on_window_closed)
+        event_bus.subscribe(BrowserTabClosed, self._on_browser_tab_closed)
+        event_bus.subscribe(WindowCaptionChanged, self._on_window_caption_changed)
+
+    def _on_focus_changed(self, event: FocusChanged):
+        self._current_app = event.app
+        self._current_window_id = event.window_id
+
+        current = self._history.current
+
+        # Already sitting on an entry for this exact window - either a
+        # redundant re-activation, or the echo of raising this window to
+        # satisfy a back()/forward() request (KWin fires the same
+        # windowActivated signal either way). Re-confirm that entry rather
+        # than falling through to the tab cache below, which holds
+        # whatever tab was *most recently* seen for this window and can
+        # easily be newer than the one this history position actually
+        # refers to - substituting it in would silently jump us to the
+        # wrong tab and, worse, look like a fresh navigation and truncate
+        # away the forward history we were just re-visiting.
+        #
+        # Checked against the live current position (not a one-shot flag
+        # set by the navigation call) so it can't be invalidated by an
+        # unrelated event - e.g. a page title update on some other tab -
+        # arriving before this echo does.
+        if current is not None and current.window_id == event.window_id:
+            self._history.push(current)
+            return
+
+        latest_tab = self._latest_tab_by_kwin_window.get(event.window_id)
+
+        adapter = ADAPTERS_BY_APP.get(event.app)
+
+        if event.app in BROWSER_APPS and latest_tab is not None:
+            self._push_tab(latest_tab)
+        elif adapter is not None:
+            self._push_adapter_tab(adapter, event)
+        else:
+            self._push_window(event)
+
+    def _on_browser_tab_changed(self, event: BrowserTabChanged):
+        browser_window_key = (event.connection_id, event.window_id)
+
+        if self._current_app in BROWSER_APPS:
+            self._kwin_window_for_browser_window[browser_window_key] = self._current_window_id
+
+        kwin_window_id = self._kwin_window_for_browser_window.get(browser_window_key)
+
+        if kwin_window_id is not None:
+            self._latest_tab_by_kwin_window[kwin_window_id] = event
+
+        if self._current_app in BROWSER_APPS:
+            self._push_tab(event)
+
+    def _on_window_closed(self, event: WindowClosed):
+        self._history.mark_window_dead(event.window_id)
+
+        # Drop it from the tab caches too - otherwise a later refocus of a
+        # *different* window that happens to reuse this slot could never
+        # actually collide (KWin ids aren't reused), but leaving a stale
+        # closed-window entry lying around serves no purpose either way.
+        self._latest_tab_by_kwin_window.pop(event.window_id, None)
+        self._latest_adapter_restore_by_kwin_window.pop(event.window_id, None)
+
+    def _on_browser_tab_closed(self, event: BrowserTabClosed):
+        # Find every restore_id this (connection, tab) has ever been
+        # recorded under. In practice there's only ever one, but nothing
+        # guarantees that, so this is a filter rather than a fixed lookup.
+        for kwin_window_id, cached in list(self._latest_tab_by_kwin_window.items()):
+            if cached.connection_id == event.connection_id and cached.tab_id == event.tab_id:
+                del self._latest_tab_by_kwin_window[kwin_window_id]
+
+        # restore_id is "{browser}:{connection_id}:{tab_id}" - the browser
+        # family name isn't known here, so mark dead by suffix match (with
+        # a leading ":" to anchor it at a field boundary) against the whole
+        # history rather than reconstructing the exact string.
+        restore_id_suffix = f":{event.connection_id}:{event.tab_id}"
+
+        for item in self._history.all_items():
+            if item.restore_id is not None and item.restore_id.endswith(restore_id_suffix):
+                self._history.mark_tab_dead(item.restore_id)
+
+    def _on_window_caption_changed(self, event: WindowCaptionChanged):
+        # Only means anything for the window that's actually focused right
+        # now - a caption change on a background window isn't a navigation,
+        # and _current_window_id is the same liveness signal _on_focus_changed
+        # already relies on.
+        if event.window_id != self._current_window_id:
+            return
+
+        adapter = ADAPTERS_BY_APP.get(event.app)
+
+        if adapter is None:
+            return
+
+        self._push_adapter_tab(adapter, event)
+
+    def _push_adapter_tab(self, adapter, event):
+        restore_id = adapter.resolve_restore_id(event.pid)
+
+        if restore_id is None:
+            self._push_window(event)
+            return
+
+        self._latest_adapter_restore_by_kwin_window[event.window_id] = restore_id
+
+        self._history.push(FocusItem(
+            app=event.app,
+            window_id=event.window_id,
+            title=event.title,
+            restore_type=adapter.restore_type,
+            restore_id=restore_id,
+            timestamp=event.timestamp,
+        ))
+
+    def _push_window(self, event: FocusChanged):
+        self._history.push(FocusItem(
+            app=event.app,
+            window_id=event.window_id,
+            title=event.title,
+            timestamp=event.timestamp,
+        ))
+
+    def _push_tab(self, tab_event: BrowserTabChanged):
+        self._history.push(FocusItem(
+            app=self._current_app,
+            window_id=self._current_window_id,
+            title=tab_event.title,
+            restore_type="browser_tab",
+            restore_id=f"{tab_event.browser}:{tab_event.connection_id}:{tab_event.tab_id}",
+            timestamp=tab_event.timestamp,
+        ))
+
+    def back(self):
+        return self._skip_noop_entries(self._history.back)
+
+    def forward(self):
+        return self._skip_noop_entries(self._history.forward)
+
+    def _skip_noop_entries(self, step):
+        item = step()
+
+        while item is not None and self._is_noop_window_entry(item):
+            item = step()
+
+        return item
+
+    def _is_noop_window_entry(self, item: FocusItem) -> bool:
+        # A plain window-level entry (no specific tab/session captured -
+        # see the fallbacks in _push_adapter_tab/_on_focus_changed) is only
+        # a guaranteed no-op if we ALSO hold more specific info for this
+        # exact window (a real browser tab or adapter session) - that's
+        # the case this exists for: bouncing between a stale fallback
+        # entry and the adjacent real tab/session entry for a window that
+        # never lost focus, which would otherwise make back/forward look
+        # completely stuck even though a genuinely different window sits
+        # one step further out.
+        #
+        # Without a more specific entry on record, this fallback IS the
+        # only representation of that window's history - e.g. Konsole's
+        # D-Bus call failed, or the browser extension never reported a
+        # tab - and skipping it would silently swallow the one real
+        # position we have for it (see test_dead_entry_skip.py's Konsole
+        # entry, which must remain reachable).
+        if item.restore_type is not None or item.window_id != self._current_window_id:
+            return False
+
+        return (
+            item.window_id in self._latest_tab_by_kwin_window
+            or item.window_id in self._latest_adapter_restore_by_kwin_window
+        )
+
+    @property
+    def current(self):
+        return self._history.current
