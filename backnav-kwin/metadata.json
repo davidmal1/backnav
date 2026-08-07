@@ -1,8 +1,8 @@
 {
     "KPlugin": {
-        "Id": "tabnav",
-        "Name": "TabNav",
-        "Description": "TabNav KWin event producer",
+        "Id": "backnav",
+        "Name": "BackNav",
+        "Description": "BackNav KWin event producer",
         "Version": "0.1.0",
         "License": "MIT",
         "Authors": [
