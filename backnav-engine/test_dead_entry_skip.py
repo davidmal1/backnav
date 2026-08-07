@@ -8,8 +8,9 @@ from core.navigation_engine import NavigationEngine
 event_bus = EventBus()
 engine = NavigationEngine(event_bus)
 
-# 0: plain window
-event_bus.publish(FocusChanged(app="org.kde.kate", window_id="1", title="architecture.md"))
+# 0: plain window (an app with no adapter, so this can only ever be a
+# plain window-level entry)
+event_bus.publish(FocusChanged(app="org.kde.dolphin", window_id="1", title="architecture.md"))
 # 1: a short-lived launcher popup that will close right after
 event_bus.publish(FocusChanged(app="albert", window_id="2", title="Albert"))
 # 2: browser tab

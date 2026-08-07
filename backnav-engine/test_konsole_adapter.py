@@ -38,7 +38,7 @@ event_bus = EventBus()
 engine = NavigationEngine(event_bus)
 
 # 0: some other window has focus first.
-event_bus.publish(FocusChanged(app="org.kde.kate", window_id="1", title="architecture.md"))
+event_bus.publish(FocusChanged(app="org.kde.dolphin", window_id="1", title="architecture.md"))
 
 # 1: Konsole window gains focus - resolves via the adapter (session 0).
 event_bus.publish(FocusChanged(app="org.kde.konsole", window_id="2", pid=123, title="~/project"))
@@ -59,7 +59,7 @@ assert engine.current.restore_id == "konsole:123:1", f"got {engine.current.resto
 # Adapter can't resolve a session id this time (e.g. qdbus6 call failed) -
 # should gracefully fall back to a plain window-level entry rather than
 # crashing or recording a bogus restore_id.
-event_bus.publish(FocusChanged(app="org.kde.kate", window_id="1", title="architecture.md"))
+event_bus.publish(FocusChanged(app="org.kde.dolphin", window_id="1", title="architecture.md"))
 event_bus.publish(FocusChanged(app="org.kde.konsole", window_id="2", pid=123, title="~/project"))
 assert engine.current.restore_type is None
 assert engine.current.title == "~/project"
