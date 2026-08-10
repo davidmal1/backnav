@@ -7,12 +7,16 @@ from core.events.window_closed import WindowClosed
 from core.history_manager import HistoryManager
 from core.models.focus_item import FocusItem
 
-# Resource classes (KWin's `app`) that host the browser extension.
-# There's no shared ID space between a KWin window and a Chromium
-# `windowId`, so we can't correlate a tab event to a specific browser
-# window - we treat "a browser" as a single logical window, which
+# Resource classes (KWin's `app`) that host a companion WebExtension
+# reporting BrowserTabChanged/BrowserTabClosed - originally just browsers,
+# but Thunderbird's MailExtension APIs (tabs.onActivated/onRemoved) give it
+# the exact same "real tab id, extension can report and restore it" shape,
+# so it's tracked the same way rather than needing its own mechanism.
+# There's no shared ID space between a KWin window and the extension's own
+# `windowId`, so we can't correlate a tab event to a specific KWin window -
+# we treat "one instance of the app" as a single logical window, which
 # matches every scenario this project has designed for so far.
-BROWSER_APPS = {
+TAB_EXTENSION_APPS = {
     "brave-browser",
     "vivaldi-stable",
     "Vivaldi-snap",
@@ -22,6 +26,8 @@ BROWSER_APPS = {
     "microsoft-edge",
     "firefox",
     "firefox_firefox",
+    # Confirmed live via the KWin script's own event log.
+    "thunderbird",
 }
 
 
@@ -104,7 +110,7 @@ class NavigationEngine:
 
         adapter = ADAPTERS_BY_APP.get(event.app)
 
-        if event.app in BROWSER_APPS and latest_tab is not None:
+        if event.app in TAB_EXTENSION_APPS and latest_tab is not None:
             self._push_tab(latest_tab)
         elif adapter is not None:
             self._push_adapter_tab(adapter, event)
@@ -114,7 +120,7 @@ class NavigationEngine:
     def _on_browser_tab_changed(self, event: BrowserTabChanged):
         browser_window_key = (event.connection_id, event.window_id)
 
-        if self._current_app in BROWSER_APPS:
+        if self._current_app in TAB_EXTENSION_APPS:
             self._kwin_window_for_browser_window[browser_window_key] = self._current_window_id
 
         kwin_window_id = self._kwin_window_for_browser_window.get(browser_window_key)
@@ -122,7 +128,7 @@ class NavigationEngine:
         if kwin_window_id is not None:
             self._latest_tab_by_kwin_window[kwin_window_id] = event
 
-        if self._current_app in BROWSER_APPS:
+        if self._current_app in TAB_EXTENSION_APPS:
             self._push_tab(event)
 
     def _on_window_closed(self, event: WindowClosed):
