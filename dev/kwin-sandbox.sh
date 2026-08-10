@@ -18,6 +18,24 @@
 #      name can NEVER collide with, or be confused for, your real
 #      session's `org.kde.KWin`. Every command below only ever talks to
 #      the sandbox bus, explicitly.
+#   3. Points XDG_CONFIG_HOME (and friends) at a private, disposable config
+#      tree, so nothing the nested session does can write to your real
+#      ~/.config. A private bus is NOT sufficient on its own - see below.
+#
+# Second incident, 2026-08-10: a private D-Bus bus alone did NOT give real
+# isolation. The nested session inherited $HOME, so the kglobalaccel that
+# got activated on the *sandbox* bus happily persisted test shortcut
+# bindings into the developer's real ~/.config/kglobalshortcutsrc,
+# clobbering the live Meta+Tab BackNav binding with a mangled value.
+# Anything in the nested session that writes config writes YOUR config
+# unless XDG_CONFIG_HOME is redirected. Hence step 3.
+#
+# Same session, second trap: the nested KWin idled out and started its own
+# kscreenlocker_greet, which took an exclusive keyboard grab. Physical key
+# presses then produced zero global-shortcut signals while D-Bus
+# `invokeShortcut` still worked - which looks exactly like "the shortcut
+# binding is broken" and burned hours of debugging. The private config
+# tree below disables autolock so this cannot recur.
 #
 # Confirmed live: with this isolation in place, `qdbus6 ...
 # org.kde.kwin.Scripting.loadDeclarativeScript <path> <pluginName>` is the
@@ -68,6 +86,39 @@ DEV_DIR="$REPO_ROOT/dev"
 STATE_DIR="${XDG_RUNTIME_DIR:-/tmp}/backnav-sandbox"
 SOCKET_NAME="wayland-backnav-sandbox"
 
+# Private, disposable XDG tree for the nested session. Without this the
+# nested session writes to your real ~/.config (see header). Everything
+# here is throwaway and re-seeded on every `start`.
+SANDBOX_HOME="$STATE_DIR/xdg"
+SANDBOX_CONFIG_HOME="$SANDBOX_HOME/config"
+SANDBOX_DATA_HOME="$SANDBOX_HOME/data"
+SANDBOX_STATE_HOME="$SANDBOX_HOME/state"
+SANDBOX_CACHE_HOME="$SANDBOX_HOME/cache"
+
+# Shortcuts the nested session binds BackNav to. Two hard constraints, and
+# violating either one fails SILENTLY - the action still registers, the key
+# still looks grabbed, and pressing it simply does nothing:
+#
+#  1. Must be combos the real session does not grab. The outer compositor
+#     matches global shortcuts first and swallows anything it already owns.
+#     Check with getGlobalShortcutsByKey() on BOTH buses before choosing.
+#     Note the nested session inherits KWin's built-in defaults too, so
+#     Ctrl+F1..F4 (Switch to Desktop N) and the Ctrl/Meta +F7/F9/F10 Expose
+#     family are already taken on BOTH sides.
+#
+#  2. MUST NOT CONTAIN CTRL. Established by probe matrix, 2026-08-10:
+#     inside the nested compositor, Shift+, Alt+ and Meta+ combos all
+#     dispatch correctly, and a bare key does too, but every combo
+#     containing Ctrl is never delivered. The original Ctrl+Alt+Shift+B
+#     default therefore could not have worked, and cost a long debugging
+#     session that looked like a focus/isolation problem.
+#
+# Meta is the deliberate choice rather than merely a working one: the real
+# gesture under test is Meta+Tab, so a Meta-based sandbox binding exercises
+# the same modifier-held-while-tapping path as production.
+SANDBOX_BACK_KEY="${BACKNAV_SANDBOX_BACK_KEY:-Meta+F8}"
+SANDBOX_FORWARD_KEY="${BACKNAV_SANDBOX_FORWARD_KEY:-Meta+F12}"
+
 PYTHON="${BACKNAV_PYTHON:-}"
 if [ -z "$PYTHON" ]; then
     if [ -x "$HOME/.venv/bin/python3" ]; then
@@ -103,6 +154,53 @@ bus_address() {
     cat "$STATE_DIR/dbus.env"
 }
 
+# Build the nested session's private config tree from scratch. Deliberately
+# does NOT copy anything out of your real ~/.config: the whole point is that
+# the sandbox starts from stock defaults and can't write back.
+seed_sandbox_config() {
+    rm -rf "$SANDBOX_HOME"
+    mkdir -p "$SANDBOX_CONFIG_HOME" "$SANDBOX_DATA_HOME" \
+             "$SANDBOX_STATE_HOME" "$SANDBOX_CACHE_HOME"
+
+    # No screen locker. A nested locker grabs the keyboard exclusively, which
+    # silently breaks every physical-key test you try to run in here.
+    cat > "$SANDBOX_CONFIG_HOME/kscreenlockerrc" <<'EOF'
+[Daemon]
+Autolock=false
+LockGrace=0
+LockOnResume=false
+LockOnStart=false
+Timeout=0
+EOF
+
+    # No idle dimming/suspend either - same class of interference.
+    cat > "$SANDBOX_CONFIG_HOME/powermanagementprofilesrc" <<'EOF'
+[AC][DPMSControl]
+idleTime=0
+
+[AC][DimDisplay]
+idleTime=0
+EOF
+
+    # Pre-bind BackNav's actions so kglobalaccel picks them up through the
+    # normal config-load path when the script registers them - rather than
+    # us poking setShortcut() over D-Bus after the fact, which updates
+    # kglobalaccel's bookkeeping but is not obviously reflected in the
+    # running compositor's live key-matching table.
+    #
+    # The combo matters. This is a NESTED compositor: the outer/real KWin
+    # matches global shortcuts FIRST and swallows anything it claims, so the
+    # nested session only ever sees combos the real session does not grab.
+    # Meta+Tab is useless here twice over - the real session binds it to
+    # BackNav, and stock KWin binds it to "Walk Through Windows".
+    cat > "$SANDBOX_CONFIG_HOME/kglobalshortcutsrc" <<EOF
+[kwin]
+_k_friendly_name=KWin
+BackNavBack=$SANDBOX_BACK_KEY,none,BackNav: Navigate Back
+BackNavForward=$SANDBOX_FORWARD_KEY,none,BackNav: Navigate Forward
+EOF
+}
+
 cmd_start() {
     local width="${1:-1024}"
     local height="${2:-768}"
@@ -114,8 +212,13 @@ cmd_start() {
 
     rm -f "$STATE_DIR"/*.pid "$STATE_DIR/dbus.env"
     : > "$STATE_DIR/kwin.log"
+    seed_sandbox_config
 
     (
+        export XDG_CONFIG_HOME="$SANDBOX_CONFIG_HOME"
+        export XDG_DATA_HOME="$SANDBOX_DATA_HOME"
+        export XDG_STATE_HOME="$SANDBOX_STATE_HOME"
+        export XDG_CACHE_HOME="$SANDBOX_CACHE_HOME"
         dbus-run-session -- bash -c '
             echo $$ > "'"$STATE_DIR"'/shell.pid"
             echo -n "$DBUS_SESSION_BUS_ADDRESS" > "'"$STATE_DIR"'/dbus.env"
@@ -171,8 +274,32 @@ cmd_stop() {
         kill "$(cat "$STATE_DIR/launcher.pid")" 2>/dev/null || true
     fi
 
-    sleep 0.3
+    # kwin_wayland can take several seconds to tear the compositor down.
+    # Reporting "stopped" before it has actually exited is how you end up
+    # convinced a stale sandbox window on screen is something else entirely.
+    local kwin_pid=""
+    [ -f "$STATE_DIR/kwin.pid" ] && kwin_pid="$(cat "$STATE_DIR/kwin.pid")"
+
+    if [ -n "$kwin_pid" ]; then
+        local waited=0
+        while is_alive "$kwin_pid" && [ "$waited" -lt 100 ]; do
+            sleep 0.1
+            waited=$((waited + 1))
+        done
+        if is_alive "$kwin_pid"; then
+            echo "kwin pid $kwin_pid ignored SIGTERM after 10s, sending SIGKILL" >&2
+            kill -KILL "$kwin_pid" 2>/dev/null || true
+            sleep 0.5
+        fi
+    fi
+
+    sleep 0.2
     rm -f "$STATE_DIR"/*.pid "$STATE_DIR/dbus.env" "$STATE_DIR/loaded.txt"
+
+    if [ -n "$kwin_pid" ] && is_alive "$kwin_pid"; then
+        echo "WARNING: kwin pid $kwin_pid is STILL alive after SIGKILL" >&2
+        return 1
+    fi
     echo "sandbox stopped"
 }
 
@@ -216,6 +343,30 @@ cmd_exec() {
     DBUS_SESSION_BUS_ADDRESS="$(bus_address)" "$@"
 }
 
+# loadScript()/loadDeclarativeScript() only REGISTER a script and hand back
+# an id - they do not run it. Nothing executes until start() is called, and
+# start() is what applies each registerShortcut()'s default key binding too.
+#
+# This cost a long debugging session (2026-08-10). Without it the sandbox
+# looks completely healthy while being entirely inert: the load call returns
+# a plausible id, `isScriptLoaded` says true, and - most misleading of all -
+# `org.kde.KGlobalAccel.shortcut()` happily reports the right keycode for
+# BackNavBack/BackNavForward, because that reads the seeded
+# kglobalshortcutsrc rather than any live registration. So the keys appear
+# bound, yet no script is running, nothing is grabbed, and every physical
+# keypress vanishes without a signal.
+#
+# To tell the two states apart, use getGlobalShortcutsByKey(<keycode>),
+# which only answers for a key that is genuinely grabbed, or just watch for
+# the script's own console.log output (prefixed "js:") in kwin.log.
+#
+# start() is safe to call repeatedly - it only starts scripts that are
+# loaded but not yet running.
+start_scripts() {
+    DBUS_SESSION_BUS_ADDRESS="$(bus_address)" qdbus6 org.kde.KWin /Scripting \
+        org.kde.kwin.Scripting.start
+}
+
 cmd_load() {
     require_running
     local file="${1:?usage: $0 load <qml-file> [pluginName]}"
@@ -228,6 +379,7 @@ cmd_load() {
     echo "loadDeclarativeScript($file, $plugin) -> $id"
     echo "$plugin" >> "$STATE_DIR/loaded.txt"
 
+    start_scripts
     sleep 0.3
     echo "--- kwin.log tail (check for parse/runtime errors) ---"
     tail -n 15 "$STATE_DIR/kwin.log"
@@ -245,6 +397,7 @@ cmd_load_js() {
     echo "loadScript($file, $plugin) -> $id"
     echo "$plugin" >> "$STATE_DIR/loaded.txt"
 
+    start_scripts
     sleep 0.3
     echo "--- kwin.log tail (check for parse/runtime errors) ---"
     tail -n 15 "$STATE_DIR/kwin.log"
