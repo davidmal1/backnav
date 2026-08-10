@@ -19,7 +19,7 @@ class FakeKonsoleAdapter:
         self._sessions = list(sessions)
         self.restored = []
 
-    def resolve_restore_id(self, pid):
+    def resolve_restore_id(self, pid, title=""):
         session_id = self._sessions.pop(0)
         if session_id is None:
             return None

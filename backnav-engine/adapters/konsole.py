@@ -24,7 +24,10 @@ class KonsoleAdapter:
     app_name = "org.kde.konsole"
     restore_type = "konsole_tab"
 
-    def resolve_restore_id(self, pid: int):
+    def resolve_restore_id(self, pid: int, title: str = ""):
+        # title unused - currentSession() is a direct, fresher query than
+        # anything the caption text could tell us (see qpdfview's adapter
+        # for the app that actually needs it).
         session_id = self._call(pid, "currentSession")
 
         if session_id is None:

@@ -23,7 +23,7 @@ class FakeKateAdapter:
     def __init__(self, paths):
         self._paths = list(paths)
 
-    def resolve_restore_id(self, pid):
+    def resolve_restore_id(self, pid, title=""):
         path = self._paths.pop(0)
         return None if path is None else f"kate:{pid}:{path}"
 

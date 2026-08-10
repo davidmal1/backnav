@@ -35,7 +35,10 @@ class KateAdapter:
     _MAIN_WINDOW_PATH = "/kate/MainWindow_1"
     _APPLICATION_PATH = "/MainApplication"
 
-    def resolve_restore_id(self, pid: int):
+    def resolve_restore_id(self, pid: int, title: str = ""):
+        # title unused - windowFilePath is a direct, fresher query than
+        # anything the caption text could tell us (see qpdfview's adapter
+        # for the app that actually needs it).
         path = self._call(pid, self._MAIN_WINDOW_PATH, "org.qtproject.Qt.QWidget.windowFilePath")
 
         if not path:

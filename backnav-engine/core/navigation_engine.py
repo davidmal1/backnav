@@ -180,7 +180,12 @@ class NavigationEngine:
         self._push_adapter_tab(adapter, event)
 
     def _push_adapter_tab(self, adapter, event):
-        restore_id = adapter.resolve_restore_id(event.pid)
+        # title is passed alongside pid for adapters (qpdfview) that have
+        # no D-Bus query for "what's currently active" at all and must
+        # resolve the active tab from the caption text itself - Kate and
+        # Konsole both ignore it, since they can query fresher state
+        # directly by pid instead.
+        restore_id = adapter.resolve_restore_id(event.pid, event.title)
 
         if restore_id is None:
             self._push_window(event)
