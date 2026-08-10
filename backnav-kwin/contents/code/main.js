@@ -136,36 +136,35 @@ workspace.windowAdded.connect(function(window) {
 // (KWin scripts can't safely presume a free key combo) - assign one under
 // System Settings > Shortcuts > BackNav after this script is (re)loaded.
 //
-// The daemon owns the history; this script just asks it what to activate
-// and does the actual raising, since KWin is the only thing that can do
-// that. Browser-tab entries additionally make the daemon tell the owning
-// browser extension to switch tabs, as a side effect of the same call.
-function navigate(direction)
-{
-    callDBus(
-        "com.backnav.Navigator", "/com/backnav/Navigator", "com.backnav.Navigator", "Navigate",
-        direction,
-        function(windowId) {
-            activateWindow(windowId);
-        }
-    );
-}
-
-// This callback only ever fires once per press - registerShortcut is
-// wired to the underlying QAction's triggered() signal, with no
-// hold/repeat/release equivalent exposed anywhere in the scripting API -
-// so it's kept to exactly this simple "single press = jump immediately"
-// behaviour. The hold+repeat-taps history preview overlay (see the
-// sibling backnav-kwin-overlay/ package) does NOT hook in here: the
-// daemon watches these same two shortcuts' hold/repeat/release state
-// directly via KGlobalAccel's own D-Bus signals instead (see
-// backnav-engine/core/overlay_controller.py), since that's the only
-// place that information actually exists. A quick tap-and-release still
-// produces exactly one Navigate() call from here, same as always.
+// These two registrations exist purely so the action names are known to
+// KGlobalAccel. The callbacks are deliberately EMPTY - do not put a
+// Navigate() call back in here.
+//
+// Why: registerShortcut's callback is wired to the underlying QAction's
+// triggered() signal, which fires on key PRESS and exposes no
+// hold/repeat/release equivalent anywhere in the KWin scripting API. The
+// daemon drives navigation from one level down instead, off KGlobalAccel's
+// own globalShortcutPressed/Repeated/Released D-Bus signals for these
+// same two action names (see backnav-engine/core/overlay_controller.py) -
+// that being the only place hold/repeat/release information exists at all.
+//
+// An earlier version navigated from here as well, on the assumption that a
+// tap-and-release with no repeats in between would drive both paths to the
+// same end result. It does not: the two are additive, not idempotent, so
+// every quick tap navigated exactly twice (the script's Navigate() plus
+// the controller's commit_peek() on release). Confirmed live, 2026-08-10.
+// A hold was worse - triggered() fires at press, so it jumped one window
+// immediately, before the user had finished choosing, then jumped again on
+// release.
+//
+// Consequence to be aware of: raising the window is now solely the
+// overlay's job (it polls NavigatorService.GetPeekState() for
+// activateWindowId and calls activateWindow itself), because on Wayland
+// only KWin can raise a window and the daemon has no way to push to a JS
+// script. With the backnav-overlay package disabled, the cursor still
+// moves and browser tabs still switch, but nothing gets raised.
 registerShortcut("BackNavBack", "BackNav: Navigate Back", "", function() {
-    navigate("back");
 });
 
 registerShortcut("BackNavForward", "BackNav: Navigate Forward", "", function() {
-    navigate("forward");
 });

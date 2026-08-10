@@ -1,5 +1,13 @@
 /*
-    BackNav's hold+repeat-taps history preview overlay.
+    BackNav's history preview overlay.
+
+    One tap of the shortcut = one step through history, with this panel
+    previewing where the next few taps would land. It is NOT the
+    Alt+Tab-style "hold the modifier, tap to accumulate, release to
+    commit" gesture it was originally designed as - that turned out to be
+    impossible to build on KGlobalAccel, which never reports the
+    modifier's release at all. See overlay_controller.py's docstring for
+    the measurements.
 
     A *separate* KWin script package from backnav-kwin/ (plain
     "javascript"-API script, contents/code/main.js) rather than a QML
@@ -16,9 +24,20 @@
 
     This script has no shortcuts of its own - backnav-kwin/'s
     registerShortcut("BackNavBack"/"BackNavForward", ...) calls still own
-    those, unchanged, so a quick tap-and-release keeps working exactly
-    as before with no overlay flicker. Instead, this purely polls and
-    renders: see backnav-engine/core/overlay_controller.py's docstring
+    the action names. Those callbacks are now EMPTY, though: they used to
+    navigate too, which double-navigated every tap (see that file, and
+    overlay_controller.py, for the full story). The daemon is the only
+    thing that navigates now.
+
+    That makes this package load-bearing rather than cosmetic: raising
+    the target window is now solely this script's job, via
+    activateWindow() below, because on Wayland only KWin can raise a
+    window and the daemon cannot push a D-Bus signal into a KWin script.
+    With this package disabled, the history cursor still moves and
+    browser tabs still switch, but no window is ever raised.
+
+    Instead of shortcuts, this purely polls and renders: see
+    backnav-engine/core/overlay_controller.py's docstring
     for the full why (short version: KGlobalAccel itself - not either
     KWin script - is what actually knows about hold/repeat/release, and
     there's no way for the daemon to push a D-Bus signal into this QML
@@ -37,12 +56,27 @@ Window {
 
     property int highlightIndex: -1
 
+    // Visibility is driven explicitly rather than bound to entries.count.
+    //
+    // `visible: entries.count > 0` looks equivalent and is not: applyState()
+    // rebuilds the model with clear()+append(), so the count passes through
+    // 0 on every single rebuild, which hides and re-shows a real on-screen
+    // Window. At the 80ms poll rate that is ~12 hide/show cycles a second -
+    // observed live as the panel "refreshing constantly".
+    property bool showing: false
+
+    // Content signature of the last applied state, so an unchanged poll
+    // result is skipped entirely instead of pointlessly rebuilding the
+    // model. The daemon is polled continuously but the content only
+    // actually changes when the user taps.
+    property string contentKey: ""
+
     color: "transparent"
     flags: Qt.BypassWindowManagerHint | Qt.FramelessWindowHint
-    visible: entries.count > 0
+    visible: showing
 
     width: rowWidth + 24
-    height: Math.min(entries.count, 8) * rowHeight + 24
+    height: Math.max(Math.min(entries.count, 8), 1) * rowHeight + 24
     x: Screen.virtualX + (Screen.width - width) / 2
     y: Screen.virtualY + (Screen.height - height) / 2
 
@@ -109,15 +143,51 @@ Window {
         // down for plain back()/forward() already.
     }
 
-    function applyState(state) {
-        entries.clear();
-        root.highlightIndex = -1;
+    // Keeps the panel up briefly after the gesture ends. Without this it
+    // is on screen only while the key is physically down - measured at
+    // 160-220ms per tap - which reads as a flicker rather than a preview,
+    // and makes rapid taps strobe. Handled here rather than in the daemon
+    // deliberately: how long a hint lingers is a presentation concern, and
+    // GetPeekState() stays a truthful report of the live gesture state.
+    Timer {
+        id: dwell
+        interval: 700
+        onTriggered: {
+            root.showing = false;
+            root.contentKey = "";
+            entries.clear();
+            root.highlightIndex = -1;
+        }
+    }
 
+    function applyState(state) {
         if (state.active) {
-            for (let i = 0; i < state.entries.length; i++) {
-                entries.append(state.entries[i]);
+            dwell.stop();
+
+            // Rebuild only when the content actually differs, so a steady
+            // stream of identical poll results costs nothing and the
+            // ListView is not thrashed 12x/sec.
+            const key = state.highlightIndex + "|" + JSON.stringify(state.entries);
+
+            if (key !== root.contentKey) {
+                root.contentKey = key;
+                entries.clear();
+
+                for (let i = 0; i < state.entries.length; i++) {
+                    entries.append(state.entries[i]);
+                }
+
+                root.highlightIndex = state.highlightIndex;
             }
-            root.highlightIndex = state.highlightIndex;
+
+            // An exhausted history reports active with zero entries; showing
+            // an empty panel would be worse than showing nothing.
+            root.showing = entries.count > 0;
+        } else if (root.showing && !dwell.running) {
+            // Gesture just ended - leave the last rendered contents on
+            // screen until the timer fires so the user can still read
+            // where they landed.
+            dwell.restart();
         }
 
         if (state.activateWindowId) {
