@@ -1,0 +1,16 @@
+{
+    "KPlugin": {
+        "Id": "backnav-overlay",
+        "Name": "BackNav Overlay",
+        "Description": "BackNav's hold+repeat-taps history preview overlay",
+        "Version": "0.1.0",
+        "License": "MIT",
+        "Authors": [
+            {
+                "Name": "David Malcolm"
+            }
+        ]
+    },
+    "KPackageStructure": "KWin/Script",
+    "X-Plasma-API": "declarativescript"
+}

@@ -88,3 +88,15 @@ class HistoryManager:
 
     def all_items(self):
         return list(self._history)
+
+    # Exposed so NavigationEngine.peek() can simulate several back()/
+    # forward() steps (to preview them for the hold+repeat overlay) and
+    # then put the cursor back exactly where it found it - see
+    # NavigationEngine.peek()'s docstring for why that's done by
+    # snapshotting/restoring _index rather than duplicating back()/
+    # forward()'s own dead-entry-skipping loop.
+    def snapshot_index(self) -> int:
+        return self._index
+
+    def restore_index(self, index: int):
+        self._index = index

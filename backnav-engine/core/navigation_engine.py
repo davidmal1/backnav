@@ -259,6 +259,61 @@ class NavigationEngine:
             or item.window_id in self._latest_adapter_restore_by_kwin_window
         )
 
+    def peek(self, direction: str, count: int):
+        """
+        Non-mutating preview of up to `count` valid steps from the
+        current position in `direction`, for the hold+repeat-taps
+        overlay (see core/overlay_controller.py) - each held/repeated
+        tap of the shortcut asks for one more step's worth of preview
+        without actually committing to it yet.
+
+        Reuses back()/forward() themselves - not HistoryManager's raw
+        back()/forward() - so the exact same dead-entry/no-op-window
+        skipping rules apply here as they would to a real navigation;
+        otherwise the overlay could preview/highlight an entry that a
+        real commit_peek() of the same (direction, count) would then
+        skip straight past, landing somewhere else than what was shown.
+        The real cursor is snapshotted first and always restored
+        afterwards (even if a caller's `count` overshoots the ends of
+        history) so peeking never has a side effect of its own.
+        """
+        step = self.back if direction == "back" else self.forward
+        saved_index = self._history.snapshot_index()
+        items = []
+
+        try:
+            for _ in range(count):
+                item = step()
+                if item is None:
+                    break
+                items.append(item)
+        finally:
+            self._history.restore_index(saved_index)
+
+        return items
+
+    def commit_peek(self, direction: str, count: int):
+        """
+        The release side of the hold+repeat overlay gesture: actually
+        advances the real cursor `count` valid steps in `direction` -
+        i.e. exactly what peek(direction, count) most recently showed as
+        the highlighted (last) entry - and returns that entry, the same
+        shape back()/forward() themselves return for a single step.
+        Restoring/activating it is the caller's responsibility (see
+        navigator_service.restore_item()), same as for a plain
+        Navigate() call.
+        """
+        step = self.back if direction == "back" else self.forward
+        item = None
+
+        for _ in range(count):
+            next_item = step()
+            if next_item is None:
+                break
+            item = next_item
+
+        return item
+
     @property
     def current(self):
         return self._history.current

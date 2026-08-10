@@ -9,6 +9,31 @@ SERVICE_NAME = "com.backnav.Navigator"
 OBJECT_PATH = "/com/backnav/Navigator"
 
 
+def restore_item(item):
+    """
+    The non-window-raising half of "make `item` the active thing":
+    browser-tab entries need the owning browser told to switch its
+    active tab (over the existing WebSocket connection - KWin can't see
+    or do this), and adapter-tracked entries (Konsole session, Kate/
+    qpdfview tab, ...) need the adapter's own restore() called. Shared
+    by Navigate() (KWin-initiated, synchronous back()/forward()) and
+    OverlayController's release handler (daemon-initiated, off the back
+    of a commit_peek()) - both need the exact same restore side effects,
+    just triggered from opposite directions.
+
+    Raising the KWin window itself is deliberately NOT done here -
+    KWin is the only thing that can do that on Wayland, so callers still
+    need to get item.window_id to KWin one way or another afterwards.
+    """
+    if item.restore_type == "browser_tab":
+        browser, connection_id, tab_id = item.restore_id.split(":", 2)
+        asyncio.ensure_future(activate_tab(connection_id, int(tab_id)))
+    else:
+        adapter = ADAPTERS_BY_RESTORE_TYPE.get(item.restore_type)
+        if adapter is not None:
+            adapter.restore(item.restore_id)
+
+
 class NavigatorService(ServiceInterface):
     """
     Exposes NavigationEngine.back()/forward() over D-Bus so the KWin
@@ -21,11 +46,18 @@ class NavigatorService(ServiceInterface):
     its active tab, which KWin can't see or do - that side effect is
     dispatched here, over the existing WebSocket connection, before
     the window id is handed back for KWin to raise.
+
+    GetPeekState() is the read side of the hold+repeat overlay: KWin's
+    declarativescript QML (see backnav-overlay/) has no way to receive a
+    D-Bus signal push directly, so it polls this on a short QML Timer
+    instead of the daemon pushing updates to it - see
+    core/overlay_controller.py's docstring for the full rationale.
     """
 
-    def __init__(self, engine):
+    def __init__(self, engine, overlay):
         super().__init__(SERVICE_NAME)
         self._engine = engine
+        self._overlay = overlay
 
     @method()
     def Navigate(self, direction: "s") -> "s":
@@ -34,12 +66,10 @@ class NavigatorService(ServiceInterface):
         if item is None:
             return ""
 
-        if item.restore_type == "browser_tab":
-            browser, connection_id, tab_id = item.restore_id.split(":", 2)
-            asyncio.ensure_future(activate_tab(connection_id, int(tab_id)))
-        else:
-            adapter = ADAPTERS_BY_RESTORE_TYPE.get(item.restore_type)
-            if adapter is not None:
-                adapter.restore(item.restore_id)
+        restore_item(item)
 
         return item.window_id
+
+    @method()
+    def GetPeekState(self) -> "s":
+        return self._overlay.state_json()

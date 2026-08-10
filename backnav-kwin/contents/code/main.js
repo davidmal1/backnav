@@ -151,6 +151,17 @@ function navigate(direction)
     );
 }
 
+// This callback only ever fires once per press - registerShortcut is
+// wired to the underlying QAction's triggered() signal, with no
+// hold/repeat/release equivalent exposed anywhere in the scripting API -
+// so it's kept to exactly this simple "single press = jump immediately"
+// behaviour. The hold+repeat-taps history preview overlay (see the
+// sibling backnav-kwin-overlay/ package) does NOT hook in here: the
+// daemon watches these same two shortcuts' hold/repeat/release state
+// directly via KGlobalAccel's own D-Bus signals instead (see
+// backnav-engine/core/overlay_controller.py), since that's the only
+// place that information actually exists. A quick tap-and-release still
+// produces exactly one Navigate() call from here, same as always.
 registerShortcut("BackNavBack", "BackNav: Navigate Back", "", function() {
     navigate("back");
 });
