@@ -11,7 +11,7 @@ desktop's window events.
 
 It is also NOT a mock: it wires up the actual NavigationEngine,
 OverlayController and NavigatorService, and merely seeds them with a
-handful of fake FocusChanged events so peek()/commit_peek() have real
+handful of fake FocusChanged events so peek()/step() have real
 history to walk. What is under test is the D-Bus/signal plumbing.
 
 Usage (from the repo root):

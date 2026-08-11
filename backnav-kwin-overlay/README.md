@@ -1,11 +1,16 @@
-# backnav-overlay: the hold+repeat-taps history preview
+# backnav-overlay: the MRU history switcher
 
 A second, separate KWin script package alongside `backnav-kwin/` - it
-exists only to draw the on-screen preview list you get by holding down
-the Back/Forward shortcut (Alt+Tab style: hold, tap repeatedly to page
-further back/forward, release to jump). It has no shortcuts of its own
-and doesn't touch window activation logic beyond raising whatever
-window the daemon says to raise on release.
+exists only to draw the on-screen list you get while walking the
+Back/Forward shortcut. It has no shortcuts of its own and doesn't touch
+window activation logic beyond raising whatever window the daemon says
+to raise.
+
+The gesture is Alt+Tab's, reconstructed: each tap walks one entry down
+the most-recently-used list and raises it immediately, and the list is
+only reordered once you stop tapping. That pause is doing the job
+releasing Alt does in the real thing - see "How the end of a gesture is
+detected" below for why it has to be inferred rather than observed.
 
 ## Why a second package, not a QML file loaded by backnav-kwin/
 
@@ -23,7 +28,7 @@ exclusive per package (a package enters from either
 `contents/code/main.js` or `contents/ui/main.qml`, not both), hence two
 packages rather than one.
 
-## How hold/repeat/release actually gets detected
+## How the end of a gesture is detected
 
 Nothing in KWin's scripting API - JS or QML - exposes a shortcut's
 press/hold/release state; `registerShortcut()`'s callback and QML's
@@ -50,9 +55,23 @@ that component.
 
 So `backnav-engine/core/overlay_controller.py` subscribes to those
 signals **directly**, bypassing both KWin scripts entirely for input
-detection. See its docstring for the full state machine (press = peek 1
-step, each repeat = peek 1 step further, release = commit whatever's
-highlighted).
+detection.
+
+That still isn't enough for an Alt+Tab gesture, though, and this is the
+finding that shaped the current design. Measured on real keys
+(2026-08-10, nested sandbox, trace tooling in `dev/shortcut_trace.py`):
+**`globalShortcutReleased` tracks the KEY, not the combo.** Holding Meta
+and tapping F8 twice produced two complete `Pressed`->`Released` cycles,
+221ms and 159ms long, and releasing Meta ~2s later emitted nothing at
+all. KGlobalAccel never reports a modifier's release, so "the user let go
+of Alt" is not an event that exists here.
+
+The gesture's end is therefore inferred from the user going quiet:
+each release walks one step and (re)arms a `_DWELL_SECONDS` timer, and
+the MRU promotion happens when that timer finally expires. `_on_repeated`
+is deliberately inert - repeats arrive at the keyboard auto-repeat rate,
+measured 25-28/sec here, which crosses the whole list in a fraction of a
+second.
 
 ## How this QML learns what to show
 
@@ -90,14 +109,13 @@ at all.
 
 ## Not yet confirmed live (flagging honestly rather than assuming)
 
-- **Real physical hold+repeat+release behaviour.** The
-  `globalShortcutPressed`/`Repeated`/`Released` signals were confirmed to
-  exist and fire correctly for a scripted single "press" (via
-  `qdbus6 ... invokeShortcut`), but `invokeShortcut()` only ever emits
-  `Pressed` - there's no clean way to synthesize a real held key from
-  this environment (Wayland session, no `ydotool`/`wtype` installed) to
-  see `Repeated`/`Released` fire for real. Needs an actual hands-on test
-  once a keybinding is assigned.
+- **`_DWELL_SECONDS` is a guess, not a measurement.** 600ms was picked to
+  be comfortably longer than a deliberate double-tap and shorter than a
+  pause between separate gestures, but it has never been tuned against
+  actual use. It is the one number in this design most likely to need
+  changing, and the symptom of getting it wrong is subtle: too short and
+  a two-tap walk silently becomes two one-tap gestures that just swap the
+  same pair of windows.
 - **`internalId` on QML `Workspace.stackingOrder` window objects.** The
   plain JS scripting API's `workspace.stackingOrder[i].internalId` is
   confirmed live (it's what `backnav-kwin/`'s `activateWindow()` already

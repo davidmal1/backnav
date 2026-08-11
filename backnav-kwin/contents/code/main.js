@@ -152,7 +152,7 @@ workspace.windowAdded.connect(function(window) {
 // tap-and-release with no repeats in between would drive both paths to the
 // same end result. It does not: the two are additive, not idempotent, so
 // every quick tap navigated exactly twice (the script's Navigate() plus
-// the controller's commit_peek() on release). Confirmed live, 2026-08-10.
+// the controller's own step on release). Confirmed live, 2026-08-10.
 // A hold was worse - triggered() fires at press, so it jumped one window
 // immediately, before the user had finished choosing, then jumped again on
 // release.

@@ -262,23 +262,22 @@ class NavigationEngine:
     def peek(self, direction: str, count: int):
         """
         Non-mutating preview of up to `count` valid steps from the
-        current position in `direction`, for the hold+repeat-taps
-        overlay (see core/overlay_controller.py) - each held/repeated
-        tap of the shortcut asks for one more step's worth of preview
-        without actually committing to it yet.
+        current position in `direction`, for the overlay (see
+        core/overlay_controller.py) to show where the following taps of
+        the shortcut would land.
 
         Reuses back()/forward() themselves - not HistoryManager's raw
         back()/forward() - so the exact same dead-entry/no-op-window
         skipping rules apply here as they would to a real navigation;
         otherwise the overlay could preview/highlight an entry that a
-        real commit_peek() of the same (direction, count) would then
-        skip straight past, landing somewhere else than what was shown.
-        The real cursor is snapshotted first and always restored
-        afterwards (even if a caller's `count` overshoots the ends of
-        history) so peeking never has a side effect of its own.
+        real step() in the same direction would then skip straight past,
+        landing somewhere else than what was shown. The walk state is
+        snapshotted first and always restored afterwards (even if a
+        caller's `count` overshoots the end of the list) so peeking never
+        has a side effect of its own.
         """
         step = self.back if direction == "back" else self.forward
-        saved_index = self._history.snapshot_index()
+        saved_walk = self._history.snapshot_walk()
         items = []
 
         try:
@@ -288,31 +287,29 @@ class NavigationEngine:
                     break
                 items.append(item)
         finally:
-            self._history.restore_index(saved_index)
+            self._history.restore_walk(saved_walk)
 
         return items
 
-    def commit_peek(self, direction: str, count: int):
+    def step(self, direction: str):
         """
-        The release side of the hold+repeat overlay gesture: actually
-        advances the real cursor `count` valid steps in `direction` -
-        i.e. exactly what peek(direction, count) most recently showed as
-        the highlighted (last) entry - and returns that entry, the same
-        shape back()/forward() themselves return for a single step.
-        Restoring/activating it is the caller's responsibility (see
-        navigator_service.restore_item()), same as for a plain
-        Navigate() call.
+        Advance an in-progress gesture by one entry and return where it
+        landed, for the caller to activate. Deliberately does NOT reorder
+        history - under MRU ordering that only happens in commit_walk(),
+        once the gesture has actually finished. See HistoryManager's
+        docstring for why reordering on every step would make anything
+        past the second entry unreachable.
         """
-        step = self.back if direction == "back" else self.forward
-        item = None
+        return self.back() if direction == "back" else self.forward()
 
-        for _ in range(count):
-            next_item = step()
-            if next_item is None:
-                break
-            item = next_item
-
-        return item
+    def commit_walk(self):
+        """
+        End of gesture: promote wherever the walk landed to the front of
+        the MRU list, so the next gesture counts from there. Fired by the
+        caller after an idle dwell, since KGlobalAccel gives no
+        modifier-release signal that could mark a gesture's end directly.
+        """
+        return self._history.commit()
 
     @property
     def current(self):

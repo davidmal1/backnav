@@ -1,12 +1,26 @@
+import asyncio
 import json
 
 from core.navigator_service import restore_item
 
-# How many entries of upcoming history the overlay previews. Purely a
-# display window - it is NOT how far a gesture can travel, since one tap
-# always commits exactly one step (see _on_repeated). Nobody needs to see
-# 500 entries at once; 8 is a comfortable panel height.
+# How many entries the overlay shows at once: where the gesture currently
+# stands, plus the next _MAX_PEEK_DEPTH - 1 places further taps would land.
+# Purely a display window, not a limit on how far a gesture can travel.
+# Nobody needs to see 500 entries at once; 8 is a comfortable panel height.
 _MAX_PEEK_DEPTH = 8
+
+# How long the gesture stays open after the last tap before the landed
+# entry is promoted to the front of the MRU list.
+#
+# This is a stand-in for releasing Alt in a real Alt+Tab, which is not
+# available to us: KGlobalAccel never reports a modifier's release (see
+# the class docstring), so the end of a multi-tap gesture has to be
+# inferred from the user stopping. It is the single value worth tuning by
+# feel. Too short and a deliberate two-tap walk gets split into two
+# separate one-tap gestures, which just swaps back and forth; too long and
+# the ordinary bounce between two windows feels like it lags before it
+# settles. 600ms is a starting point, not a measured optimum.
+_DWELL_SECONDS = 0.6
 
 # KWin's registerShortcut("BackNavBack", ...)/("BackNavForward", ...)
 # (see backnav-kwin/contents/code/main.js) register these two action
@@ -17,34 +31,39 @@ _SHORTCUT_DIRECTIONS = {"BackNavBack": "back", "BackNavForward": "forward"}
 
 class OverlayController:
     """
-    Drives the one-tap-one-step history overlay, entirely from the
+    Drives the Alt+Tab-style MRU history overlay, entirely from the
     daemon side.
 
-    NOT an Alt+Tab-style accumulating gesture, though it was designed as
-    one and the earlier version of this docstring described it that way.
-    That design assumed you could hold a modifier, tap the key N times to
-    walk N entries, and commit once when the modifier came up. Measured
-    on real keys (2026-08-10, nested sandbox, trace in dev/shortcut_trace.py)
-    that is impossible: globalShortcutReleased tracks the KEY, not the
-    combo. Holding Meta and tapping F8 twice produced two complete
-    pressed->released cycles 221ms and 159ms long, each committing
-    independently, and releasing Meta ~2s later emitted nothing at all.
-    KGlobalAccel simply never reports the modifier's release, so there is
-    no signal that could mark the end of a multi-tap gesture.
+    Each tap of the shortcut walks one entry down the MRU list and raises
+    what it lands on immediately, so a single tap behaves exactly like a
+    single Alt+Tab: you bounce to the previous window with no delay. What
+    the dwell defers is only the *reordering* - see HistoryManager, but in
+    short, promoting the landed entry on every tap would swap the top two
+    entries back and forth and make the third entry unreachable.
 
-    So each tap is its own self-contained navigation of exactly one step.
-    Going back five entries means five taps. This is a deliberate choice
-    over the two alternatives, both rejected:
+    The end of a gesture has to be inferred, because it cannot be
+    observed. Measured on real keys (2026-08-10, nested sandbox, trace in
+    dev/shortcut_trace.py): globalShortcutReleased tracks the KEY, not the
+    combo. Holding Meta and tapping F8 twice produced two complete
+    pressed->released cycles 221ms and 159ms long, and releasing Meta ~2s
+    later emitted nothing at all. KGlobalAccel simply never reports the
+    modifier's release, so "the user let go of Alt" is not a signal that
+    exists here. _DWELL_SECONDS of quiet stands in for it.
+
+    Two alternatives were tried and rejected before landing on this:
 
       - Accumulating via auto-repeat (hold the key, let globalShortcutRepeated
         count) does work mechanically, but repeats arrive at the keyboard
         auto-repeat rate - measured 25-28/sec here - which saturates the
         whole preview depth in under 300ms. Confirmed unusable by feel
         before it was ever measured ("holding jumps many places very
-        quickly").
-      - Counting taps and committing after an idle timeout would recover
-        the Alt+Tab feel, but taxes the common single-tap case with a
-        visible delay before anything happens.
+        quickly"). _on_repeated is still deliberately inert for this
+        reason.
+      - Committing one step per tap against a browser-style back/forward
+        stack. That works, and is what `main` currently does, but it keeps
+        a linear history with forward-truncation rather than recency
+        ordering - a different mental model to Alt+Tab, and not the one
+        this branch is exploring.
 
     Why this lives here rather than in the KWin script: KWin's JS
     scripting API's registerShortcut() callback only ever fires once per
@@ -97,7 +116,16 @@ class OverlayController:
         self._direction = None
         self._pending_activate_window_id = None
 
+        # Captured in attach() rather than fetched per call: the signal
+        # handlers below are sync callbacks invoked by dbus_next from the
+        # loop, so get_running_loop() would work there too, but holding the
+        # reference makes it obvious there is exactly one loop involved.
+        self._loop = None
+        self._commit_handle = None
+
     async def attach(self, bus):
+        self._loop = asyncio.get_running_loop()
+
         introspection = await bus.introspect("org.kde.kglobalaccel", "/component/kwin")
         proxy = bus.get_proxy_object("org.kde.kglobalaccel", "/component/kwin", introspection)
         component = proxy.get_interface("org.kde.kglobalaccel.Component")
@@ -127,21 +155,41 @@ class OverlayController:
         #
         # Holding the shortcut therefore navigates exactly one step,
         # same as tapping it - the repeats in between are discarded and
-        # the single commit happens on release.
+        # the single step happens on release.
         return
 
     def _on_released(self, component_unique, shortcut_unique, timestamp):
-        if _SHORTCUT_DIRECTIONS.get(shortcut_unique) != self._direction:
+        direction = _SHORTCUT_DIRECTIONS.get(shortcut_unique)
+
+        if direction is None or direction != self._direction:
             return
 
-        # Always exactly one step: this fires on each key release, so one
-        # press/release cycle is one whole gesture (see class docstring).
-        item = self._engine.commit_peek(self._direction, 1)
-        self._direction = None
+        # One tap, one step - raised straight away, so a single tap feels
+        # like a single Alt+Tab. Only the MRU reordering waits for the
+        # dwell below.
+        item = self._engine.step(direction)
 
         if item is not None:
             restore_item(item)
             self._pending_activate_window_id = item.window_id
+
+        # Each tap pushes the commit further out, so a run of taps is one
+        # gesture rather than several. Tapping the opposite direction
+        # mid-gesture walks back up the same open walk (the equivalent of
+        # Alt+Shift+Tab) rather than starting a new one, since _direction
+        # is only cleared when the walk actually commits.
+        self._schedule_commit()
+
+    def _schedule_commit(self):
+        if self._commit_handle is not None:
+            self._commit_handle.cancel()
+
+        self._commit_handle = self._loop.call_later(_DWELL_SECONDS, self._commit)
+
+    def _commit(self):
+        self._commit_handle = None
+        self._direction = None
+        self._engine.commit_walk()
 
     def state_json(self) -> str:
         """
@@ -156,21 +204,19 @@ class OverlayController:
         if self._direction is None:
             return json.dumps({"active": False, "activateWindowId": activate_window_id})
 
-        # Previews a whole windowful of upcoming history, not just the one
-        # entry this tap commits to. peek() walks `count` steps and returns
-        # each one, so passing the committed count (always 1 now) would
-        # render a single-row panel - technically accurate and useless.
-        # Showing the next _MAX_PEEK_DEPTH entries instead lets you see
-        # where the following taps would land, which is the only reason
-        # the overlay earns its screen space under a one-tap-one-step
-        # gesture.
-        entries = self._engine.peek(self._direction, _MAX_PEEK_DEPTH)
+        # Row 0 is where the gesture currently stands (already raised), and
+        # the rows under it are where the next taps would land. Showing the
+        # landing spot rather than only the upcoming ones is what makes
+        # this readable as an Alt+Tab switcher: during the dwell the
+        # highlight is on the window you are actually looking at, so
+        # "one more tap" has an obvious destination.
+        current = self._engine.current
+        entries = [current] if current is not None else []
+        entries.extend(self._engine.peek(self._direction, _MAX_PEEK_DEPTH - len(entries)))
 
         return json.dumps({
             "active": True,
             "direction": self._direction,
-            # Index 0 is this tap's destination; later rows are where
-            # subsequent taps would go.
             "highlightIndex": 0 if entries else -1,
             "entries": [{"app": item.app, "title": item.title} for item in entries],
             "activateWindowId": activate_window_id,

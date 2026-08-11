@@ -18,7 +18,7 @@ def restore_item(item):
     qpdfview tab, ...) need the adapter's own restore() called. Shared
     by Navigate() (KWin-initiated, synchronous back()/forward()) and
     OverlayController's release handler (daemon-initiated, off the back
-    of a commit_peek()) - both need the exact same restore side effects,
+    of a step()) - both need the exact same restore side effects,
     just triggered from opposite directions.
 
     Raising the KWin window itself is deliberately NOT done here -
