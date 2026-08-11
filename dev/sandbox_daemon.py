@@ -20,11 +20,18 @@ Usage (from the repo root):
     dev/kwin-sandbox.sh load-js backnav-kwin/contents/code/main.js backnav-dev
     dev/kwin-sandbox.sh load backnav-kwin-overlay/contents/ui/main.qml backnav-overlay-dev
 
+All four steps are required. The load-js line is what registers
+BackNavBack/BackNavForward via registerShortcut(); skip it and there is
+no shortcut for KGlobalAccel to grab, so the keys below do nothing at
+all - with no error anywhere to say why.
+
 Then focus the sandbox window and use the sandbox's own shortcuts
-(Ctrl+Alt+Shift+B / Ctrl+Alt+Shift+N by default - see kwin-sandbox.sh;
-they deliberately differ from the real session's Meta+Tab, because the
-outer compositor matches global shortcuts first and swallows anything it
-already claims).
+(Meta+F8 / Meta+F12 by default - see kwin-sandbox.sh). They deliberately
+differ from the real session's Meta+Tab, because the outer compositor
+matches global shortcuts first and swallows anything it already claims.
+They also deliberately avoid Ctrl: measured 2026-08-10, a nested
+kwin_wayland never receives ANY combo containing Ctrl, though bare keys
+and Shift/Alt/Meta combos all arrive fine.
 """
 import asyncio
 import os
