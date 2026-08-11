@@ -291,6 +291,78 @@ class NavigationEngine:
 
         return items
 
+    def walk_view(self, count: int):
+        """
+        The MRU list as a switcher should render it: up to `count` entries
+        counted from the FRONT of the list, plus which of those rows the
+        in-progress walk is currently standing on.
+
+        Deliberately not "the next `count` entries from wherever the walk
+        is". That was the first version, and it made the panel a sliding
+        window with the highlight pinned to row 0, so every tap scrolled
+        the whole list up by one and the entry you had just walked away
+        from vanished off the top - the one entry a bounce depends on
+        being able to see. Observed live and misread as entries appearing
+        from nowhere, which is fair, because between two gestures the
+        commit reorders the list underneath a view that never showed the
+        reordered part.
+
+        Rendering from the front instead keeps the list still and moves
+        the highlight down it, which is what Alt+Tab does and what makes
+        the reordering legible.
+
+        Walks with back() rather than the raw history so dead and no-op
+        entries are skipped exactly as a real navigation would skip them -
+        otherwise the panel could show a row that no tap can ever land on.
+        Returns (entries, highlight_index), with highlight_index -1 when
+        there is nothing to show.
+        """
+        saved_walk = self._history.snapshot_walk()
+
+        try:
+            target = self._history.walk_position()
+
+            # Re-run the walk from the front so the rows come out in
+            # rendered order. The activation set starts empty because
+            # nothing here activates anything.
+            self._history.restore_walk((0, set()))
+
+            first = self._history.current
+
+            if first is None:
+                return [], -1
+
+            entries = [first]
+            highlight = 0 if target == 0 else -1
+
+            while True:
+                item = self.back()
+
+                if item is None:
+                    break
+
+                entries.append(item)
+
+                if self._history.walk_position() == target:
+                    highlight = len(entries) - 1
+
+                # Keep going past `count` only while still hunting for the
+                # highlighted row, so a walk deeper than the panel can show
+                # is still locatable rather than silently unhighlighted.
+                if highlight != -1 and len(entries) >= count:
+                    break
+        finally:
+            self._history.restore_walk(saved_walk)
+
+        if len(entries) > count:
+            # Scroll the window down just far enough to keep the highlight
+            # on the last row rather than off the bottom.
+            start = max(0, highlight - count + 1)
+            entries = entries[start:start + count]
+            highlight -= start
+
+        return entries, highlight
+
     def step(self, direction: str):
         """
         Advance an in-progress gesture by one entry and return where it

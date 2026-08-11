@@ -187,3 +187,11 @@ class HistoryManager:
         walk, activated = state
         self._walk = walk
         self._walk_activated = set(activated)
+
+    # Raw offset, exposed so NavigationEngine.walk_view() can recognise
+    # which rendered row the walk is standing on. Deliberately not used as
+    # a display index itself: the rendered list omits dead and no-op
+    # entries, so its row numbers and this offset drift apart as soon as
+    # anything is skipped.
+    def walk_position(self) -> int:
+        return self._walk

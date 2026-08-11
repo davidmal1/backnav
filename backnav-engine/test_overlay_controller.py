@@ -52,8 +52,7 @@ class FakeLoop:
 
 
 fake_engine = mock.Mock()
-fake_engine.peek.return_value = []
-fake_engine.current = None
+fake_engine.walk_view.return_value = ([], -1)
 
 loop = FakeLoop()
 controller = OverlayController(fake_engine)
@@ -77,22 +76,26 @@ empty_state = controller.state_json()
 assert '"highlightIndex": -1' in empty_state, empty_state
 assert '"entries": []' in empty_state, empty_state
 
-# The panel shows where the gesture currently stands (row 0, highlighted)
-# followed by where subsequent taps would land, filling the same total
-# window. Guards against regressing to a one-row panel, and against
-# double-counting the current entry.
-fake_engine.peek.reset_mock()
-fake_engine.current = mock.Mock(app="org.kde.konsole", title="here")
-fake_engine.peek.return_value = [
-    mock.Mock(app="org.kde.kate", title="one"),
-    mock.Mock(app="firefox", title="two"),
-    mock.Mock(app="org.kde.dolphin", title="three"),
-]
+# The panel renders the MRU list from the front with the highlight on
+# whichever row the walk currently stands on - a stable list with a moving
+# highlight, NOT a sliding window pinned to row 0. Regressing to the
+# latter hides the entry the gesture just walked away from, which is the
+# one a bounce needs to be able to see.
+fake_engine.walk_view.reset_mock()
+fake_engine.walk_view.return_value = (
+    [
+        mock.Mock(app="org.kde.konsole", title="top"),
+        mock.Mock(app="org.kde.kate", title="one"),
+        mock.Mock(app="firefox", title="two"),
+        mock.Mock(app="org.kde.dolphin", title="three"),
+    ],
+    2,
+)
 state = controller.state_json()
-fake_engine.peek.assert_called_once_with("back", _MAX_PEEK_DEPTH - 1)
+fake_engine.walk_view.assert_called_once_with(_MAX_PEEK_DEPTH)
 assert '"active": true' in state and '"direction": "back"' in state, state
-assert '"highlightIndex": 0' in state, state
-assert '"here"' in state and '"one"' in state and '"three"' in state, state
+assert '"highlightIndex": 2' in state, state
+assert '"top"' in state and '"three"' in state, state
 
 # Repeats are the keyboard's auto-repeat (25-28/sec measured) and must be
 # discarded entirely - a hold walks one step, exactly like a tap. This is

@@ -1,13 +1,16 @@
 /*
     BackNav's history preview overlay.
 
-    One tap of the shortcut = one step through history, with this panel
-    previewing where the next few taps would land. It is NOT the
-    Alt+Tab-style "hold the modifier, tap to accumulate, release to
-    commit" gesture it was originally designed as - that turned out to be
-    impossible to build on KGlobalAccel, which never reports the
-    modifier's release at all. See overlay_controller.py's docstring for
-    the measurements.
+    An Alt+Tab-style switcher over most-recently-used ordering: each tap
+    of the shortcut walks the highlight one row down a list that itself
+    holds still, and the list is only reordered once the gesture goes
+    quiet.
+
+    The gesture cannot be driven the way Alt+Tab's is. KGlobalAccel never
+    reports a modifier's release - only individual key releases - so
+    "the user let go of Alt" is not an observable event here, and the end
+    of a gesture is inferred from an idle dwell instead. See
+    overlay_controller.py's docstring for the measurements.
 
     A *separate* KWin script package from backnav-kwin/ (plain
     "javascript"-API script, contents/code/main.js) rather than a QML
@@ -65,10 +68,15 @@ Window {
     // observed live as the panel "refreshing constantly".
     property bool showing: false
 
-    // Content signature of the last applied state, so an unchanged poll
-    // result is skipped entirely instead of pointlessly rebuilding the
-    // model. The daemon is polled continuously but the content only
-    // actually changes when the user taps.
+    // Signature of the last applied ENTRY list, so an unchanged poll result
+    // is skipped instead of pointlessly rebuilding the model. The daemon is
+    // polled continuously but the rows only actually change between
+    // gestures, not between the taps within one.
+    //
+    // Deliberately excludes highlightIndex. The rows are stable across a
+    // gesture and only the highlight moves, so folding the highlight into
+    // this key would rebuild the entire ListView on every tap purely to
+    // recolour one row.
     property string contentKey: ""
 
     color: "transparent"
@@ -164,10 +172,10 @@ Window {
         if (state.active) {
             dwell.stop();
 
-            // Rebuild only when the content actually differs, so a steady
+            // Rebuild only when the rows actually differ, so a steady
             // stream of identical poll results costs nothing and the
             // ListView is not thrashed 12x/sec.
-            const key = state.highlightIndex + "|" + JSON.stringify(state.entries);
+            const key = JSON.stringify(state.entries);
 
             if (key !== root.contentKey) {
                 root.contentKey = key;
@@ -176,9 +184,11 @@ Window {
                 for (let i = 0; i < state.entries.length; i++) {
                     entries.append(state.entries[i]);
                 }
-
-                root.highlightIndex = state.highlightIndex;
             }
+
+            // Always applied, model rebuild or not: within one gesture the
+            // rows hold still and this is the only thing that changes.
+            root.highlightIndex = state.highlightIndex;
 
             // An exhausted history reports active with zero entries; showing
             // an empty panel would be worse than showing nothing.

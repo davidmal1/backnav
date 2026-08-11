@@ -204,20 +204,17 @@ class OverlayController:
         if self._direction is None:
             return json.dumps({"active": False, "activateWindowId": activate_window_id})
 
-        # Row 0 is where the gesture currently stands (already raised), and
-        # the rows under it are where the next taps would land. Showing the
-        # landing spot rather than only the upcoming ones is what makes
-        # this readable as an Alt+Tab switcher: during the dwell the
-        # highlight is on the window you are actually looking at, so
-        # "one more tap" has an obvious destination.
-        current = self._engine.current
-        entries = [current] if current is not None else []
-        entries.extend(self._engine.peek(self._direction, _MAX_PEEK_DEPTH - len(entries)))
+        # A stable list with a moving highlight, not a sliding window with
+        # a pinned one - see NavigationEngine.walk_view() for why the
+        # latter was wrong. The rows stay put across the taps of a gesture
+        # and the highlight walks down them, so the entry you came from
+        # stays visible above the highlight the whole time.
+        entries, highlight = self._engine.walk_view(_MAX_PEEK_DEPTH)
 
         return json.dumps({
             "active": True,
             "direction": self._direction,
-            "highlightIndex": 0 if entries else -1,
+            "highlightIndex": highlight,
             "entries": [{"app": item.app, "title": item.title} for item in entries],
             "activateWindowId": activate_window_id,
         })
