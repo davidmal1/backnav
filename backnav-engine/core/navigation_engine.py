@@ -1,4 +1,4 @@
-from adapters.registry import ADAPTERS_BY_APP
+from adapters.registry import ADAPTERS_BY_APP, ADAPTERS_BY_RESTORE_TYPE
 from core.events.browser_tab_changed import BrowserTabChanged
 from core.events.browser_tab_closed import BrowserTabClosed
 from core.events.focus_changed import FocusChanged
@@ -227,12 +227,56 @@ class NavigationEngine:
         return self._skip_noop_entries(self._history.forward)
 
     def _skip_noop_entries(self, step):
+        # One snapshot per navigation, shared across every entry this walk
+        # steps over. Asking each adapter afresh per entry would mean a
+        # qdbus6 subprocess plus a SQLite read for every closed tab in a
+        # row, on a keypress; asking once is enough, since nothing can
+        # close a tab in the middle of this loop anyway.
+        live_targets = {}
+
         item = step()
 
-        while item is not None and self._is_noop_window_entry(item):
+        while item is not None and (
+            self._is_noop_window_entry(item)
+            or self._is_closed_adapter_tab(item, live_targets)
+        ):
             item = step()
 
         return item
+
+    @staticmethod
+    def _is_closed_adapter_tab(item: FocusItem, live_targets: dict) -> bool:
+        # The dead-window/dead-tab sets in HistoryManager only ever learn
+        # about closures something reports: KWin's WindowClosed for whole
+        # windows, the extension's BrowserTabClosed for browser tabs.
+        # Adapter-tracked apps emit no close event of any kind - closing a
+        # qpdfview tab leaves its window wide open - so their entries can
+        # never be marked dead that way, and restoring one doesn't harmlessly
+        # do nothing: qpdfview's jumpToPageOrOpenInNewTab and Kate's openUrl
+        # both REOPEN a file that's no longer there. Hence asking the app
+        # directly, at navigation time, for adapters that can answer.
+        #
+        # Deliberately not cached into _dead_tabs. A restore_id names a
+        # file path, so reopening that same file by hand would produce the
+        # identical id - and "once dead, always dead" would then skip right
+        # past the reopened tab forever.
+        adapter = ADAPTERS_BY_RESTORE_TYPE.get(item.restore_type)
+
+        if adapter is None or not hasattr(adapter, "live_targets"):
+            return False
+
+        if item.restore_type not in live_targets:
+            live_targets[item.restore_type] = adapter.live_targets()
+
+        targets = live_targets[item.restore_type]
+
+        # Couldn't tell (app not running, D-Bus call failed, database
+        # unreadable). Assume alive: landing on a stale entry is a much
+        # smaller failure than refusing to navigate anywhere at all.
+        if targets is None:
+            return False
+
+        return adapter.target_of(item.restore_id) not in targets
 
     def _is_noop_window_entry(self, item: FocusItem) -> bool:
         # A plain window-level entry (no specific tab/session captured -

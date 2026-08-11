@@ -107,16 +107,64 @@ class QpdfviewAdapter:
         _, page, path = restore_id.split(":", 2)
         return self._call("jumpToPageOrOpenInNewTab", path, page) is not None
 
-    def _lookup_path(self, stem, page):
+    def live_targets(self):
+        """
+        Absolute paths of every tab qpdfview currently has open, or None
+        if that can't be established right now.
+
+        Exists because restore() reopens rather than no-ops: closing a
+        tab produces no event anywhere the daemon can see (KWin only
+        reports whole windows, and there's no qpdfview equivalent of the
+        browsers' BrowserTabClosed), so an entry for a closed tab stays
+        forever alive-looking, and jumpToPageOrOpenInNewTab() cheerfully
+        opens a brand new tab for it. Navigation has to ask, at the
+        moment it's about to land somewhere, rather than being told.
+
+        None - not an empty set - on any failure. An empty set means
+        "asked, and nothing is open"; conflating the two would let a
+        broken D-Bus call or an unreadable database declare the entire
+        qpdfview history dead and silently strand every one of its
+        entries.
+        """
+        # Strict here, unlike resolve_restore_id's fire-and-forget use:
+        # without a confirmed fresh write, the table is last session's
+        # tabs, and trusting it would mark still-open tabs as closed.
+        # ("" is a successful void return - test for None specifically.)
+        if self._call("saveDatabase") is None:
+            return None
+
+        rows = self._read_tabs()
+
+        if rows is None:
+            return None
+
+        return {row_path for row_path, _ in rows}
+
+    @staticmethod
+    def target_of(restore_id: str) -> str:
+        # Liveness is a property of the FILE, not of the page we happened
+        # to be on: the tab is still the same tab after scrolling, and the
+        # recorded page is almost always stale by the time we walk back to
+        # it.
+        _, _page, path = restore_id.split(":", 2)
+        return path
+
+    def _read_tabs(self):
         try:
             con = sqlite3.connect(self._DATABASE_PATH)
             try:
-                rows = con.execute(
+                return con.execute(
                     "SELECT filePath, currentPage FROM tabs_v5 WHERE instanceName = ''"
                 ).fetchall()
             finally:
                 con.close()
         except sqlite3.Error:
+            return None
+
+    def _lookup_path(self, stem, page):
+        rows = self._read_tabs()
+
+        if rows is None:
             return None
 
         candidates = [
