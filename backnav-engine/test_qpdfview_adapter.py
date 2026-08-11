@@ -81,6 +81,37 @@ with tempfile.TemporaryDirectory() as tmp_dir:
         assert adapter.restore("qpdfview:5:/home/user/Downloads/report.pdf") is True
         fake_call.assert_called_with("jumpToPageOrOpenInNewTab", "/home/user/Downloads/report.pdf", "5")
 
+        # --- live_targets(): what navigation uses to avoid landing on -
+        # --- and thereby REOPENING - a tab that's since been closed.
+
+        # saveDatabase() is a void D-Bus method: a successful call returns
+        # an empty string, which is falsy. Testing it for truthiness rather
+        # than for None would treat every success as a failure and disable
+        # the check entirely.
+        fake_call.side_effect = lambda member, *args: "" if member == "saveDatabase" else None
+        assert adapter.live_targets() == {
+            "/home/user/Downloads/report.pdf",
+            "/home/user/Documents/article.pdf",
+        }, adapter.live_targets()
+
+        # Liveness is keyed on the file, not the page - the recorded page is
+        # stale as soon as the user scrolls, and scrolling doesn't close a tab.
+        assert adapter.target_of("qpdfview:99:/home/user/Downloads/report.pdf") \
+            == "/home/user/Downloads/report.pdf"
+
+        # saveDatabase() failed, so the table is last session's tabs. That
+        # must report None ("can't tell"), never an empty or stale set - a
+        # stale set would declare still-open tabs closed and strand them.
+        fake_call.side_effect = lambda member, *args: None
+        assert adapter.live_targets() is None
+
+    # Database missing entirely (restoreTabs never enabled) - again None
+    # rather than an empty set, which would read as "nothing is open" and
+    # silently make every qpdfview entry in history unreachable.
+    with mock.patch.object(QpdfviewAdapter, "_DATABASE_PATH", os.path.join(tmp_dir, "absent")), \
+         mock.patch.object(QpdfviewAdapter, "_call", return_value=""):
+        assert adapter.live_targets() is None
+
 print("Adapter unit tests OK")
 
 

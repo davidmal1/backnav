@@ -53,6 +53,12 @@ class HistoryManager:
         # entry naming one instead of landing on it: re-activating a closed
         # window/tab is a silent no-op, which just makes navigation look
         # stuck rather than actually doing nothing visible on purpose.
+        #
+        # Only covers what something actually reports as closed - KWin's
+        # WindowClosed, the extension's BrowserTabClosed. Adapter-tracked
+        # tabs (qpdfview, Kate) have no close event to listen for AND are
+        # not no-ops to restore, so they're checked live instead; see
+        # NavigationEngine._is_closed_adapter_tab.
         self._dead_windows: set[str] = set()
         self._dead_tabs: set[str] = set()
 

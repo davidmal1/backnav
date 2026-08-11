@@ -1,4 +1,6 @@
-from adapters.registry import ADAPTERS_BY_APP
+from contextlib import contextmanager
+
+from adapters.registry import ADAPTERS_BY_APP, ADAPTERS_BY_RESTORE_TYPE
 from core.events.browser_tab_changed import BrowserTabChanged
 from core.events.browser_tab_closed import BrowserTabClosed
 from core.events.focus_changed import FocusChanged
@@ -62,6 +64,10 @@ class NavigationEngine:
         # populate it differently (adapter resolution vs. browser
         # extension messages) but serve the exact same purpose below.
         self._latest_adapter_restore_by_kwin_window = {}
+
+        # Adapter liveness snapshot for the walk currently in progress, or
+        # None when no walk is open. See _liveness_scope().
+        self._live_targets = None
 
         event_bus.subscribe(FocusChanged, self._on_focus_changed)
         event_bus.subscribe(BrowserTabChanged, self._on_browser_tab_changed)
@@ -227,12 +233,79 @@ class NavigationEngine:
         return self._skip_noop_entries(self._history.forward)
 
     def _skip_noop_entries(self, step):
-        item = step()
-
-        while item is not None and self._is_noop_window_entry(item):
+        with self._liveness_scope():
             item = step()
 
-        return item
+            while item is not None and (
+                self._is_noop_window_entry(item)
+                or self._is_closed_adapter_tab(item)
+            ):
+                item = step()
+
+            return item
+
+    @contextmanager
+    def _liveness_scope(self):
+        """
+        Holds one adapter liveness snapshot open for everything inside the
+        block, however many entries get stepped over.
+
+        Re-entrant on purpose, and that re-entrancy is the whole point:
+        walk_view()/peek() render the overlay by calling back() in a loop,
+        and the overlay polls them every 80ms for the length of a gesture.
+        Without an outer scope each of those inner back() calls would open
+        a snapshot of its own - a qdbus6 subprocess plus a SQLite read per
+        row, ~12x a second. With one, a whole render costs a single query
+        (measured 6ms against the real qpdfview).
+
+        Only the outermost scope owns the snapshot; nested ones reuse it
+        and leave the teardown to the owner.
+        """
+        outermost = self._live_targets is None
+
+        if outermost:
+            self._live_targets = {}
+
+        try:
+            yield
+        finally:
+            # Always dropped on the way out rather than kept warm: a tab
+            # closed between two gestures must be noticed by the next one.
+            if outermost:
+                self._live_targets = None
+
+    def _is_closed_adapter_tab(self, item: FocusItem) -> bool:
+        # The dead-window/dead-tab sets in HistoryManager only ever learn
+        # about closures something reports: KWin's WindowClosed for whole
+        # windows, the extension's BrowserTabClosed for browser tabs.
+        # Adapter-tracked apps emit no close event of any kind - closing a
+        # qpdfview tab leaves its window wide open - so their entries can
+        # never be marked dead that way, and restoring one doesn't harmlessly
+        # do nothing: qpdfview's jumpToPageOrOpenInNewTab and Kate's openUrl
+        # both REOPEN a file that's no longer there. Hence asking the app
+        # directly, at navigation time, for adapters that can answer.
+        #
+        # Deliberately not cached into _dead_tabs. A restore_id names a
+        # file path, so reopening that same file by hand would produce the
+        # identical id - and "once dead, always dead" would then skip right
+        # past the reopened tab forever.
+        adapter = ADAPTERS_BY_RESTORE_TYPE.get(item.restore_type)
+
+        if adapter is None or not hasattr(adapter, "live_targets"):
+            return False
+
+        if item.restore_type not in self._live_targets:
+            self._live_targets[item.restore_type] = adapter.live_targets()
+
+        targets = self._live_targets[item.restore_type]
+
+        # Couldn't tell (app not running, D-Bus call failed, database
+        # unreadable). Assume alive: landing on a stale entry is a much
+        # smaller failure than refusing to navigate anywhere at all.
+        if targets is None:
+            return False
+
+        return adapter.target_of(item.restore_id) not in targets
 
     def _is_noop_window_entry(self, item: FocusItem) -> bool:
         # A plain window-level entry (no specific tab/session captured -
@@ -280,14 +353,17 @@ class NavigationEngine:
         saved_walk = self._history.snapshot_walk()
         items = []
 
-        try:
-            for _ in range(count):
-                item = step()
-                if item is None:
-                    break
-                items.append(item)
-        finally:
-            self._history.restore_walk(saved_walk)
+        # One liveness snapshot for the whole preview rather than one per
+        # previewed entry - this runs on the overlay's 80ms poll.
+        with self._liveness_scope():
+            try:
+                for _ in range(count):
+                    item = step()
+                    if item is None:
+                        break
+                    items.append(item)
+            finally:
+                self._history.restore_walk(saved_walk)
 
         return items
 
@@ -335,22 +411,28 @@ class NavigationEngine:
             entries = [first]
             highlight = 0 if target == 0 else -1
 
-            while True:
-                item = self.back()
+            # One liveness snapshot for the whole render rather than one
+            # per row - see _liveness_scope(). The overlay calls this every
+            # 80ms for the length of a gesture, so per-row would mean a
+            # qdbus6 subprocess per row, ~12x a second.
+            with self._liveness_scope():
+                while True:
+                    item = self.back()
 
-                if item is None:
-                    break
+                    if item is None:
+                        break
 
-                entries.append(item)
+                    entries.append(item)
 
-                if self._history.walk_position() == target:
-                    highlight = len(entries) - 1
+                    if self._history.walk_position() == target:
+                        highlight = len(entries) - 1
 
-                # Keep going past `count` only while still hunting for the
-                # highlighted row, so a walk deeper than the panel can show
-                # is still locatable rather than silently unhighlighted.
-                if highlight != -1 and len(entries) >= count:
-                    break
+                    # Keep going past `count` only while still hunting for
+                    # the highlighted row, so a walk deeper than the panel
+                    # can show is still locatable rather than silently
+                    # unhighlighted.
+                    if highlight != -1 and len(entries) >= count:
+                        break
         finally:
             self._history.restore_walk(saved_walk)
 
