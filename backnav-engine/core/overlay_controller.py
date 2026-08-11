@@ -19,8 +19,9 @@ _MAX_PEEK_DEPTH = 8
 # feel. Too short and a deliberate two-tap walk gets split into two
 # separate one-tap gestures, which just swaps back and forth; too long and
 # the ordinary bounce between two windows feels like it lags before it
-# settles. 600ms is a starting point, not a measured optimum.
-_DWELL_SECONDS = 0.6
+# settles. Not a measured optimum - 600ms was the first value hand-tested
+# and accepted, then raised to 800ms to give a two-tap walk more room.
+_DWELL_SECONDS = 0.8
 
 # KWin's registerShortcut("BackNavBack", ...)/("BackNavForward", ...)
 # (see backnav-kwin/contents/code/main.js) register these two action

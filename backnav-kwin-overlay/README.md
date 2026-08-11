@@ -113,9 +113,14 @@ at all.
   picked to sit comfortably between a deliberate double-tap and a pause
   between separate gestures, and hand-testing in the sandbox (2026-08-11)
   found it acceptable - single bounces settle without feeling sluggish,
-  and a two-tap walk stays one gesture. That is one person on one
-  keyboard, though, so it remains the number most likely to need
-  revisiting. The symptom of getting it wrong is subtle rather than
+  and a two-tap walk stays one gesture. It was then raised to **800ms**
+  to give a two-tap walk more room, which is still a guess by feel rather
+  than a measurement. That is one person on one keyboard, so it remains
+  the number most likely to need revisiting. Note it compounds with the
+  QML `dwell` timer below: the panel stays up for `_DWELL_SECONDS` after
+  the last tap and *then* lingers for that timer's interval on top, so
+  raising this also lengthens how long the overlay is on screen in total.
+  The symptom of getting it wrong is subtle rather than
   obvious: too short and a two-tap walk silently degrades into two
   one-tap gestures that just swap the same pair of windows, which reads
   as "it won't go back any further" rather than as a timing problem.
