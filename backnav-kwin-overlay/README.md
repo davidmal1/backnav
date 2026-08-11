@@ -109,13 +109,16 @@ at all.
 
 ## Not yet confirmed live (flagging honestly rather than assuming)
 
-- **`_DWELL_SECONDS` is a guess, not a measurement.** 600ms was picked to
-  be comfortably longer than a deliberate double-tap and shorter than a
-  pause between separate gestures, but it has never been tuned against
-  actual use. It is the one number in this design most likely to need
-  changing, and the symptom of getting it wrong is subtle: too short and
-  a two-tap walk silently becomes two one-tap gestures that just swap the
-  same pair of windows.
+- **`_DWELL_SECONDS` has been judged by feel, not measured.** 600ms was
+  picked to sit comfortably between a deliberate double-tap and a pause
+  between separate gestures, and hand-testing in the sandbox (2026-08-11)
+  found it acceptable - single bounces settle without feeling sluggish,
+  and a two-tap walk stays one gesture. That is one person on one
+  keyboard, though, so it remains the number most likely to need
+  revisiting. The symptom of getting it wrong is subtle rather than
+  obvious: too short and a two-tap walk silently degrades into two
+  one-tap gestures that just swap the same pair of windows, which reads
+  as "it won't go back any further" rather than as a timing problem.
 - **`internalId` on QML `Workspace.stackingOrder` window objects.** The
   plain JS scripting API's `workspace.stackingOrder[i].internalId` is
   confirmed live (it's what `backnav-kwin/`'s `activateWindow()` already
