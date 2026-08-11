@@ -26,6 +26,15 @@ def _make_handler(event_bus):
             async for message in websocket:
                 data = json.loads(message)
                 instance_id = data["instanceId"]
+
+                # Logged on the transition only, not per message. An MV3
+                # respawn arrives as a brand new socket under the same
+                # instanceId, so this legitimately fires repeatedly over a
+                # session - that pattern in the journal is exactly what
+                # tells you a worker is being evicted and coming back.
+                if connections.get(instance_id) is not websocket:
+                    print(f"backnav: browser extension connected ({instance_id})", flush=True)
+
                 connections[instance_id] = websocket
 
                 if data["event"] == "tab_closed":
@@ -51,6 +60,7 @@ def _make_handler(event_bus):
             # replaced it by the time this connection's close is handled.
             if instance_id is not None and connections.get(instance_id) is websocket:
                 del connections[instance_id]
+                print(f"backnav: browser extension disconnected ({instance_id})", flush=True)
 
     return handler
 
@@ -59,6 +69,20 @@ async def activate_tab(connection_id, tab_id):
     websocket = connections.get(connection_id)
 
     if websocket is None:
+        # Loud, because the user-visible symptom is otherwise nothing at
+        # all. Navigating onto a browser-tab entry whose extension has
+        # gone away raises the owning window - which, when walking between
+        # tabs of the SAME window, is already focused - so the tab simply
+        # never switches and no error appears anywhere. Reported live
+        # (2026-08-12) as "it doesn't activate the tab", and it took a
+        # socket-level check to find that the extension was disconnected
+        # rather than anything being wrong with navigation.
+        print(
+            f"backnav: cannot activate tab {tab_id} - no live connection for "
+            f"{connection_id}; the browser extension is not connected "
+            f"(known connections: {sorted(connections)})",
+            flush=True,
+        )
         return
 
     await websocket.send(json.dumps({
