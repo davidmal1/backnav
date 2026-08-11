@@ -23,6 +23,49 @@ _MAX_PEEK_DEPTH = 8
 # and accepted, then raised to 800ms to give a two-tap walk more room.
 _DWELL_SECONDS = 0.8
 
+# When the panel is allowed to appear at all.
+#
+# The common gesture is one tap to bounce to the previous window, and for
+# that the panel is pure distraction: the switch is already over by the
+# time it renders, and it then sits there for _DWELL_SECONDS plus the
+# QML's own linger (~1.5s total) describing a journey of one step. So it
+# stays hidden until the gesture gives some sign of actually being a walk.
+#
+# NOT a plain elapsed-time delay measured from the start of the gesture,
+# which is the obvious implementation and cannot work here. The gesture
+# stays open for the whole _DWELL_SECONDS after the last tap, so any
+# threshold below 800ms is met by every single-tap gesture too (it just
+# shows the panel late, which is worse than showing it promptly), and any
+# threshold above 800ms is never met at all because the walk has already
+# committed. There is no usable value between those two: the dwell
+# sandwiches it. What separates a bounce from a walk is not time spent in
+# the gesture, it's whether the user is still driving it - so the two
+# triggers below are engagement, not wall-clock.
+#
+# Second press, i.e. the panel appears as the second tap begins rather
+# than when it lands, so it is already up when the step happens.
+_OVERLAY_AFTER_PRESSES = 2
+
+# ...or the key being held, for which the trigger is simply the arrival of
+# the FIRST globalShortcutRepeated - deliberately with no threshold of our
+# own on top, which would be dead code. Auto-repeat does not begin until
+# the keyboard's repeat DELAY has elapsed (600ms on this machine: `xset q`
+# reports "auto repeat delay: 600, repeat rate: 25", the rate matching the
+# 25-28/sec measured earlier), so a repeat existing at all already proves
+# a hold far longer than any threshold worth setting. An earlier version
+# gated these on a 250ms hold and the condition was unreachable - the
+# first repeat is 600ms late by construction.
+#
+# Reusing the system delay is the better behaviour anyway, not just the
+# simpler one: "how long before holding a key means something" is a
+# preference the user already owns in System Settings > Keyboard, so a
+# fast repeat delay gets a correspondingly quick peek, and BackNav grows
+# no knob of its own for it.
+#
+# Holding otherwise does nothing (a hold navigates exactly one step, same
+# as a tap - see _on_repeated), so this gives it the obvious meaning of
+# "show me the list" without letting it navigate.
+
 # KWin's registerShortcut("BackNavBack", ...)/("BackNavForward", ...)
 # (see backnav-kwin/contents/code/main.js) register these two action
 # names under KGlobalAccel's "kwin" component - this is the map from
@@ -41,6 +84,13 @@ class OverlayController:
     the dwell defers is only the *reordering* - see HistoryManager, but in
     short, promoting the landed entry on every tap would swap the top two
     entries back and forth and make the third entry unreachable.
+
+    The panel is not shown for every gesture. A one-tap bounce to the
+    previous window is the common case and does not need a list drawn for
+    it, so the overlay stays hidden until a second press or a held key
+    says this is a walk - see _OVERLAY_AFTER_PRESSES. Window raising is
+    unaffected either way, since activateWindowId is reported even while
+    the overlay is inactive.
 
     The end of a gesture has to be inferred, because it cannot be
     observed. Measured on real keys (2026-08-10, nested sandbox, trace in
@@ -117,6 +167,12 @@ class OverlayController:
         self._direction = None
         self._pending_activate_window_id = None
 
+        # Overlay visibility, latched for the length of one gesture. Once
+        # armed it stays armed until the walk commits: re-deciding per poll
+        # would let the panel wink out mid-walk at the 80ms poll rate.
+        self._presses = 0
+        self._overlay_armed = False
+
         # Captured in attach() rather than fetched per call: the signal
         # handlers below are sync callbacks invoked by dbus_next from the
         # loop, so get_running_loop() would work there too, but holding the
@@ -141,10 +197,18 @@ class OverlayController:
         if direction is None:
             return
 
+        # Counted across the whole gesture, not per direction: tapping the
+        # opposite way mid-walk is still the user driving the same walk,
+        # and is if anything a stronger sign they want to see the list.
+        self._presses += 1
+
+        if self._presses >= _OVERLAY_AFTER_PRESSES:
+            self._overlay_armed = True
+
         self._direction = direction
 
     def _on_repeated(self, component_unique, shortcut_unique, timestamp):
-        # Deliberately does nothing, and must stay that way.
+        # Deliberately does not NAVIGATE, and must stay that way.
         #
         # This is the keyboard's auto-repeat, measured at 25-28/sec on
         # this machine, so treating each repeat as a step made a hold
@@ -157,7 +221,15 @@ class OverlayController:
         # Holding the shortcut therefore navigates exactly one step,
         # same as tapping it - the repeats in between are discarded and
         # the single step happens on release.
-        return
+        #
+        # They are read for one thing only, which is not navigation:
+        # they are the sole evidence available that a key is still
+        # physically down, so a hold long enough to be deliberate raises
+        # the panel. See _OVERLAY_HOLD_SECONDS.
+        if _SHORTCUT_DIRECTIONS.get(shortcut_unique) is None:
+            return
+
+        self._overlay_armed = True
 
     def _on_released(self, component_unique, shortcut_unique, timestamp):
         direction = _SHORTCUT_DIRECTIONS.get(shortcut_unique)
@@ -190,6 +262,8 @@ class OverlayController:
     def _commit(self):
         self._commit_handle = None
         self._direction = None
+        self._presses = 0
+        self._overlay_armed = False
         self._engine.commit_walk()
 
     def state_json(self) -> str:
@@ -202,7 +276,11 @@ class OverlayController:
         """
         activate_window_id, self._pending_activate_window_id = self._pending_activate_window_id, None
 
-        if self._direction is None:
+        # activateWindowId still rides out on an inactive report, which is
+        # what makes a hidden overlay work at all: a one-tap bounce raises
+        # its window through exactly this path without the panel ever
+        # being drawn.
+        if self._direction is None or not self._overlay_armed:
             return json.dumps({"active": False, "activateWindowId": activate_window_id})
 
         # A stable list with a moving highlight, not a sliding window with

@@ -66,9 +66,32 @@ assert controller.state_json() == '{"active": false, "activateWindowId": null}',
 controller._on_pressed("kwin", "SomeUnrelatedShortcut", 0)
 assert controller._direction is None
 
-# Press opens the preview.
+# Press opens the walk.
 controller._on_pressed("kwin", "BackNavBack", 0)
 assert controller._direction == "back"
+
+# It does NOT open the panel, though. One tap to bounce to the previous
+# window is the common gesture, and the panel is pure distraction for it:
+# the switch is over before it renders and it then sits on screen for the
+# dwell plus the QML's linger describing a single step.
+assert '"active": false' in controller.state_json(), "panel shown for a bare first tap"
+
+# ...and the rows nobody is going to see are never even built.
+fake_engine.walk_view.assert_not_called()
+
+# An unrelated shortcut's repeats must not raise our panel.
+controller._on_repeated("kwin", "SomeUnrelatedShortcut", 0)
+assert '"active": false' in controller.state_json(), "another shortcut's repeat raised the panel"
+
+# Holding does, though, and the FIRST repeat is enough - no threshold of
+# our own on top. Auto-repeat only begins after the keyboard's repeat
+# delay (600ms here, `xset q`), so a repeat existing at all already proves
+# a deliberate hold; an earlier 250ms gate on top was unreachable code.
+# globalShortcutRepeated is the only evidence available that a key is
+# still physically down, since KGlobalAccel never reports a release of the
+# modifier.
+controller._on_repeated("kwin", "BackNavBack", 0)
+assert '"active": true' in controller.state_json(), "hold did not raise the panel"
 
 # An empty history previews nothing and highlights nothing, rather than
 # reporting a highlightIndex that points past the end of the list.
@@ -144,6 +167,11 @@ fake_engine.commit_walk.assert_called_once_with()
 assert controller._direction is None
 assert '"active": false' in controller.state_json()
 
+# ...and the panel is re-armed from scratch for the next gesture, so the
+# next single tap is silent again rather than inheriting this walk's
+# visibility.
+assert controller._overlay_armed is False and controller._presses == 0
+
 # Release with no matching in-progress press (e.g. a shortcut that was
 # never actually pressed through this controller, or a duplicate/late
 # release) must not touch the engine at all.
@@ -161,9 +189,21 @@ fake_engine.commit_walk.reset_mock()
 loop.handles = []
 
 with mock.patch("core.overlay_controller.restore_item"):
-    for _ in range(2):
-        controller._on_pressed("kwin", "BackNavForward", 0)
-        controller._on_released("kwin", "BackNavForward", 0)
+    controller._on_pressed("kwin", "BackNavForward", 0)
+    controller._on_released("kwin", "BackNavForward", 0)
+
+    # One tap, landed, no hold - still nothing on screen. This is the
+    # gesture the hiding exists for.
+    assert '"active": false' in controller.state_json(), "one completed tap showed the panel"
+
+    controller._on_pressed("kwin", "BackNavForward", 0)
+
+    # The second press is the tell that this is a walk rather than a
+    # bounce, and the panel comes up as that tap BEGINS - so it is
+    # already on screen when the step lands, not after it.
+    assert '"active": true' in controller.state_json(), "second tap did not raise the panel"
+
+    controller._on_released("kwin", "BackNavForward", 0)
 
 assert fake_engine.step.call_args_list == [mock.call("forward"), mock.call("forward")]
 fake_engine.commit_walk.assert_not_called()

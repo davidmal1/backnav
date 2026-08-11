@@ -73,6 +73,37 @@ is deliberately inert - repeats arrive at the keyboard auto-repeat rate,
 measured 25-28/sec here, which crosses the whole list in a fraction of a
 second.
 
+## When the panel is allowed to appear
+
+Not on every gesture. The common gesture is a single tap to bounce to the
+previous window, and for that the panel is a distraction - the switch has
+already happened by the time it renders, and it then sits on screen for
+`_DWELL_SECONDS` plus the QML `dwell` linger below (~1.5s in total) to
+describe a journey of one step.
+
+So the daemon keeps reporting `active: false` until the gesture shows a
+sign of being a real walk: **a second press**, or **the key being held**
+(the first `globalShortcutRepeated`). Neither fires for tap-and-done.
+`activateWindowId` is still reported while inactive, which is what lets a
+hidden overlay still raise windows - so nothing about plain tap-to-switch
+changes.
+
+A plain elapsed-time delay from the start of the gesture was the first
+design and does not work: the gesture stays open for the whole
+`_DWELL_SECONDS` after the last tap, so any threshold under 800ms is met
+by single taps too (showing the panel late, which is worse than showing
+it promptly) and any threshold over 800ms is never met because the walk
+has already committed. The dwell sandwiches it; there is no usable value.
+
+The hold trigger deliberately has no threshold of its own on top of the
+first repeat. Auto-repeat does not start until the keyboard's repeat
+delay has elapsed - 600ms on this machine (`xset q`: "auto repeat delay:
+600, repeat rate: 25") - so a repeat existing at all already proves a
+deliberate hold. An earlier 250ms gate on top of that was unreachable
+code. It also means the peek delay follows System Settings > Keyboard
+rather than a BackNav setting, which is the right owner for "how long
+before holding a key means something".
+
 ## How this QML learns what to show
 
 The reverse direction has the same shape of problem: this QML has no
@@ -119,7 +150,10 @@ at all.
   the number most likely to need revisiting. Note it compounds with the
   QML `dwell` timer below: the panel stays up for `_DWELL_SECONDS` after
   the last tap and *then* lingers for that timer's interval on top, so
-  raising this also lengthens how long the overlay is on screen in total.
+  raising this also lengthens how long the overlay is on screen in total
+  (for the gestures that show it at all - a single tap no longer does,
+  see "When the panel is allowed to appear" above, which is what removed
+  the worst of this).
   The symptom of getting it wrong is subtle rather than
   obvious: too short and a two-tap walk silently degrades into two
   one-tap gestures that just swap the same pair of windows, which reads
