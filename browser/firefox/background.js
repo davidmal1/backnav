@@ -1,5 +1,10 @@
 let socket = null;
 let instanceId = null;
+let keepaliveTimer = null;
+
+// Comfortably inside Chrome's 30s service-worker idle timeout, so a
+// keepalive always lands before the worker can be evicted.
+const KEEPALIVE_MS = 20000;
 
 // A stable id for this browser install, independent of any one WebSocket
 // connection. MV3 service workers get unloaded after ~30s idle and respawn
@@ -42,9 +47,13 @@ function connect() {
     // no notion of replaying stale tab state later, so a backlog of old
     // events would be recorded as if they had all just happened.
     // (Same approach as thunderbird/background.js, which had it first.)
-    socket.onopen = reportActiveTab;
+    socket.onopen = () => {
+        reportActiveTab();
+        startKeepalive();
+    };
 
     socket.onclose = () => {
+        stopKeepalive();
         setTimeout(connect, 1000);
     };
 
@@ -62,6 +71,39 @@ function connect() {
             await chrome.windows.update(tab.windowId, { focused: true });
         }
     };
+}
+
+// Keeps the service worker alive for as long as the socket is up.
+//
+// The alarm below can resurrect an evicted worker, but only on its own
+// period, which left the extension connected for 30s and dead for the
+// next 30s, forever - measured live in the daemon journal as a metronomic
+// connect/disconnect every 30s. Chrome resets the worker's 30s idle timer
+// on WebSocket ACTIVITY, and an open-but-silent socket is not activity,
+// so the worker was still being evicted mid-cycle every time.
+//
+// Sending something well inside that window is what actually holds the
+// worker open. The message carries no state; being traffic is the entire
+// point of it, and the daemon skips it explicitly.
+function startKeepalive() {
+    stopKeepalive();
+
+    keepaliveTimer = setInterval(async () => {
+        if (!socket || socket.readyState !== WebSocket.OPEN)
+            return;
+
+        socket.send(JSON.stringify({
+            event: "keepalive",
+            instanceId: await getInstanceId()
+        }));
+    }, KEEPALIVE_MS);
+}
+
+function stopKeepalive() {
+    if (keepaliveTimer !== null) {
+        clearInterval(keepaliveTimer);
+        keepaliveTimer = null;
+    }
 }
 
 async function reportActiveTab() {
@@ -102,7 +144,12 @@ async function publishClosed(tabId) {
 
 connect();
 
-// The reconnect that survives the worker being evicted.
+// The backstop for when the worker gets evicted anyway.
+//
+// startKeepalive() above is what normally prevents eviction; this is the
+// recovery path if it ever fails - the daemon being down for a while, for
+// instance, since there is no socket to keep alive then and the retry
+// setTimeout dies with the worker.
 //
 // setTimeout(connect, 1000) above only retries for as long as this
 // service worker lives, and a pending timer does NOT keep it alive: MV3
