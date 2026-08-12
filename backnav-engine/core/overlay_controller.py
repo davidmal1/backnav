@@ -108,8 +108,10 @@ class OverlayController:
         auto-repeat rate - measured 25-28/sec here - which saturates the
         whole preview depth in under 300ms. Confirmed unusable by feel
         before it was ever measured ("holding jumps many places very
-        quickly"). _on_repeated is still deliberately inert for this
-        reason.
+        quickly"). _on_repeated therefore still never navigates. It is
+        not wholly inert - it raises the panel - but a hold moves the
+        highlight nowhere and commits exactly one step on release, the
+        same as a tap.
       - Committing one step per tap against a browser-style back/forward
         stack. That works, and is what `main` currently does, but it keeps
         a linear history with forward-truncation rather than recency
@@ -225,7 +227,9 @@ class OverlayController:
         # They are read for one thing only, which is not navigation:
         # they are the sole evidence available that a key is still
         # physically down, so a hold long enough to be deliberate raises
-        # the panel. See _OVERLAY_HOLD_SECONDS.
+        # the panel. The first repeat arms it with no threshold of our
+        # own on top - see the _OVERLAY_AFTER_PRESSES comment block for
+        # why any such threshold would be unreachable dead code.
         if _SHORTCUT_DIRECTIONS.get(shortcut_unique) is None:
             return
 
