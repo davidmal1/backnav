@@ -120,10 +120,9 @@ assert '"active": true' in state and '"direction": "back"' in state, state
 assert '"highlightIndex": 2' in state, state
 assert '"top"' in state and '"three"' in state, state
 
-# Repeats are the keyboard's auto-repeat (25-28/sec measured) and must be
-# discarded entirely - a hold walks one step, exactly like a tap. This is
-# the regression guard for the "holding jumps many places very quickly"
-# bug.
+# Repeats are the keyboard's auto-repeat (25-28/sec measured) and must
+# never accumulate into steps. This is the regression guard for the
+# "holding jumps many places very quickly" bug.
 for _ in range(50):
     controller._on_repeated("kwin", "BackNavBack", 0)
 
@@ -135,19 +134,50 @@ fake_engine.step.assert_not_called()
 controller._on_repeated("kwin", "BackNavForward", 0)
 assert controller._direction == "back"
 
-# Release walks exactly ONE step regardless of how many repeats arrived,
-# restores/activates the result, and schedules the commit - then the next
-# state_json() poll must report the window to activate exactly once.
+# Releasing a HELD key does not step AT ALL - not even the single step a
+# tap would make. You hold the key to stop and read the list, so being
+# moved one place the instant you let go is the opposite of what the hold
+# was for; reported live as "advancing 1 place is silly". A hold means
+# "show me where I am" and nothing else.
+with mock.patch("core.overlay_controller.restore_item") as fake_restore:
+    controller._on_released("kwin", "BackNavBack", 0)
+
+fake_engine.step.assert_not_called()
+fake_restore.assert_not_called()
+
+# It must still CLOSE the gesture, though, or the panel would hang on
+# screen until some later tap happened to commit it.
+assert len(loop.live) == 1, "a hold must still schedule its commit"
+loop.fire()
+fake_engine.commit_walk.assert_called_once_with()
+assert controller._direction is None
+assert '"active": false' in controller.state_json()
+
+fake_engine.commit_walk.reset_mock()
+loop.handles = []
+
+# ...but a TAP still steps. The removal above has to be specific to holds
+# and must not have quietly disabled navigation itself. Two taps here so
+# the panel is armed for the activateWindowId assertions below.
 fake_item = mock.Mock(title="d", window_id="42", restore_type=None, restore_id=None)
 fake_engine.step.return_value = fake_item
 
 with mock.patch("core.overlay_controller.restore_item") as fake_restore:
+    controller._on_pressed("kwin", "BackNavBack", 0)
     controller._on_released("kwin", "BackNavBack", 0)
-    fake_engine.step.assert_called_once_with("back")
-    fake_restore.assert_called_once_with(fake_item)
+    controller._on_pressed("kwin", "BackNavBack", 0)
+    controller._on_released("kwin", "BackNavBack", 0)
 
-# Raising happens immediately, but the reorder does NOT - a single tap must
-# feel instant while still leaving the gesture open for a follow-up tap.
+assert fake_engine.step.call_args_list == [mock.call("back"), mock.call("back")]
+assert fake_restore.call_args_list == [mock.call(fake_item), mock.call(fake_item)]
+
+# A tap that follows a hold must be a real tap again - the held flag is
+# per press, not per gesture, so it cannot leak forward and mute later
+# taps.
+assert controller._held is False
+
+# Raising happens immediately, but the reorder does NOT - a tap must feel
+# instant while still leaving the gesture open for a follow-up tap.
 fake_engine.commit_walk.assert_not_called()
 assert controller._direction == "back", "overlay must stay up during the dwell"
 assert len(loop.live) == 1 and loop.live[0].delay > 0

@@ -62,9 +62,9 @@ _OVERLAY_AFTER_PRESSES = 2
 # fast repeat delay gets a correspondingly quick peek, and BackNav grows
 # no knob of its own for it.
 #
-# Holding otherwise does nothing (a hold navigates exactly one step, same
-# as a tap - see _on_repeated), so this gives it the obvious meaning of
-# "show me the list" without letting it navigate.
+# Raising the panel is the ONLY thing holding does - see _on_released, a
+# hold does not navigate at all. So the gesture reads exactly as "show me
+# the list", and nothing moves until you tap.
 
 # KWin's registerShortcut("BackNavBack", ...)/("BackNavForward", ...)
 # (see backnav-kwin/contents/code/main.js) register these two action
@@ -109,9 +109,8 @@ class OverlayController:
         whole preview depth in under 300ms. Confirmed unusable by feel
         before it was ever measured ("holding jumps many places very
         quickly"). _on_repeated therefore still never navigates. It is
-        not wholly inert - it raises the panel - but a hold moves the
-        highlight nowhere and commits exactly one step on release, the
-        same as a tap.
+        not wholly inert - it raises the panel - but a hold moves
+        nothing, on release or otherwise.
       - Committing one step per tap against a browser-style back/forward
         stack. That works, and is what `main` currently does, but it keeps
         a linear history with forward-truncation rather than recency
@@ -175,6 +174,12 @@ class OverlayController:
         self._presses = 0
         self._overlay_armed = False
 
+        # Whether the press currently down has produced auto-repeats, i.e.
+        # is a hold rather than a tap. Per PRESS, not per gesture: a walk
+        # can mix taps and holds, and only the press being released right
+        # now decides whether that release steps.
+        self._held = False
+
         # Captured in attach() rather than fetched per call: the signal
         # handlers below are sync callbacks invoked by dbus_next from the
         # loop, so get_running_loop() would work there too, but holding the
@@ -207,6 +212,7 @@ class OverlayController:
         if self._presses >= _OVERLAY_AFTER_PRESSES:
             self._overlay_armed = True
 
+        self._held = False
         self._direction = direction
 
     def _on_repeated(self, component_unique, shortcut_unique, timestamp):
@@ -226,13 +232,15 @@ class OverlayController:
         #
         # They are read for one thing only, which is not navigation:
         # they are the sole evidence available that a key is still
-        # physically down, so a hold long enough to be deliberate raises
-        # the panel. The first repeat arms it with no threshold of our
+        # physically down. That drives two things: raising the panel, and
+        # marking this press as a hold so its release does not step (see
+        # _on_released). The first repeat arms it with no threshold of our
         # own on top - see the _OVERLAY_AFTER_PRESSES comment block for
         # why any such threshold would be unreachable dead code.
         if _SHORTCUT_DIRECTIONS.get(shortcut_unique) is None:
             return
 
+        self._held = True
         self._overlay_armed = True
 
     def _on_released(self, component_unique, shortcut_unique, timestamp):
@@ -241,14 +249,29 @@ class OverlayController:
         if direction is None or direction != self._direction:
             return
 
-        # One tap, one step - raised straight away, so a single tap feels
-        # like a single Alt+Tab. Only the MRU reordering waits for the
-        # dwell below.
-        item = self._engine.step(direction)
+        # A hold peeks; it does not travel.
+        #
+        # It used to step once on release, on the reasoning that a hold
+        # should at least do what a tap does. In practice that is worse
+        # than doing nothing: you hold the key to STOP and look at the
+        # list, and then get moved one place anyway the instant you let
+        # go - reported live as "advancing 1 place is silly". Holding now
+        # means only "show me where I am", and travel is always something
+        # you asked for explicitly by tapping.
+        #
+        # Still falls through to _schedule_commit() below, so a gesture
+        # that mixes taps and a final hold still commits wherever the taps
+        # left it. A hold on its own leaves _walk at 0 and HistoryManager.
+        # commit() then returns None, reordering nothing.
+        if not self._held:
+            # One tap, one step - raised straight away, so a single tap
+            # feels like a single Alt+Tab. Only the MRU reordering waits
+            # for the dwell below.
+            item = self._engine.step(direction)
 
-        if item is not None:
-            restore_item(item)
-            self._pending_activate_window_id = item.window_id
+            if item is not None:
+                restore_item(item)
+                self._pending_activate_window_id = item.window_id
 
         # Each tap pushes the commit further out, so a run of taps is one
         # gesture rather than several. Tapping the opposite direction
