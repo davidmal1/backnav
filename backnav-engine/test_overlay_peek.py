@@ -76,4 +76,45 @@ for expected in ["b", "e", "b", "e"]:
 
 assert mru() == ["e", "b", "d", "c", "a"]
 
+# --- abandon_walk(): Escape out of the chooser -----------------------
+#
+# The counterpart to commit_walk(). Where committing promotes the entry
+# the walk landed on, abandoning throws the walk away and leaves the MRU
+# order byte-for-byte as it was, however far the user wandered first.
+before = mru()
+assert engine.step("back").title == "b"
+assert engine.step("back").title == "d"
+assert engine.current.title == "d"
+
+# It returns the entry to go back TO, not the one walked to. The chooser
+# has taken keyboard focus off that window by this point, so cancelling
+# has to hand it back explicitly - which needs the entry, not just a
+# reset. Returning None here would leave focus stranded on the panel.
+assert engine.abandon_walk().title == "e"
+assert mru() == before, f"abandoning must not reorder, got {mru()!r}"
+assert engine.current.title == "e", "abandoning must return the walk home"
+
+# And the walk is genuinely closed, not merely rewound: the next tap
+# starts from the front again rather than resuming from "d".
+assert engine.step("back").title == "b"
+assert engine.abandon_walk().title == "e"
+
+# Abandoning with no walk open is harmless - a duplicate Escape, or one
+# arriving from a stale panel, must not move or reorder anything.
+assert engine.abandon_walk().title == "e"
+assert mru() == before
+
+# Abandoning must also disarm echo suppression, not just rewind the walk.
+# Every step() arms the entry it lands on, so that the focus event caused
+# by raising it is not mistaken for the user switching windows. A chooser
+# walk raises nothing, so those arms are never spent - left behind, the
+# next GENUINE switch to any window merely walked past would be swallowed
+# as an echo and silently fail to promote.
+assert engine.step("back").title == "b"
+assert engine.step("back").title == "d"
+engine.abandon_walk()
+
+event_bus.publish(FocusChanged(app="app", window_id="3", title="d"))
+assert mru()[0] == "d", f"a real switch after abandoning must promote, got {mru()!r}"
+
 print("peek()/step()/commit_walk() OK")

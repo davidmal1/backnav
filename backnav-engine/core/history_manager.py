@@ -117,6 +117,23 @@ class HistoryManager:
     def mark_tab_dead(self, restore_id: str):
         self._dead_tabs.add(restore_id)
 
+    def mark_tab_alive(self, restore_id: str):
+        """
+        Undo a dead marking, for the one caller that has better information
+        than the event stream: the extension's own live-tab set (see
+        NavigationEngine._on_browser_tabs_alive).
+
+        Nothing else may call this. "Once dead, always dead" holds for
+        everything driven by close EVENTS, because a closed id is never
+        reused and re-testing on every step would be pointless work. The
+        reconciliation path is different in kind - it is a direct
+        observation of what exists right now, so it is allowed to correct
+        a marking as well as add one. Without this the reconciliation
+        would be a one-way ratchet, and any race that killed a live tab
+        would be unrecoverable short of restarting the daemon.
+        """
+        self._dead_tabs.discard(restore_id)
+
     def _next_alive(self, start: int, step: int):
         idx = start + step
 
@@ -149,6 +166,27 @@ class HistoryManager:
 
     def forward(self):
         return self._walk_to(self._next_alive(self._walk, -1))
+
+    def abandon(self):
+        """
+        Cancel an open walk: go back to where the gesture started and
+        leave the MRU order exactly as it was, as if the walk had never
+        happened. Returns the entry to return to, or None on an empty
+        history.
+
+        The counterpart to commit(). Only reachable from the focused
+        chooser, since Escape is not an event that exists for the
+        tap-driven path - see OverlayController.
+
+        Returns _mru[0] rather than nothing because the chooser has taken
+        keyboard focus by the time this is called, so cancelling has to
+        hand focus back explicitly. There is no window to "return to"
+        implicitly; the panel took it.
+        """
+        self._walk_activated.clear()
+        self._walk = 0
+
+        return self._mru[0] if self._mru else None
 
     def commit(self):
         """

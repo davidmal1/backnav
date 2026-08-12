@@ -1,6 +1,7 @@
 import asyncio
 import json
 
+from core.events.focus_changed import FocusChanged
 from core.navigator_service import restore_item
 
 # How many entries the overlay shows at once: where the gesture currently
@@ -71,6 +72,14 @@ _OVERLAY_AFTER_PRESSES = 2
 # names under KGlobalAccel's "kwin" component - this is the map from
 # that action name back to which direction it drives here.
 _SHORTCUT_DIRECTIONS = {"BackNavBack": "back", "BackNavForward": "forward"}
+
+# How long GetPeekState() can go unpolled before the overlay panel is
+# presumed dead - see _panel_is_gone(). The QML polls every 80ms, so this
+# is twelve missed polls: long enough that a stalled compositor or a busy
+# moment cannot trip it, short enough that the user never gets a second
+# dead keypress. Deliberately NOT a chooser timeout; it only ever fires
+# for a panel that has stopped existing.
+_PANEL_HEARTBEAT_SECONDS = 1.0
 
 
 class OverlayController:
@@ -163,7 +172,7 @@ class OverlayController:
     whatever it gets back; state_json() below is what it receives.
     """
 
-    def __init__(self, engine):
+    def __init__(self, engine, event_bus=None):
         self._engine = engine
         self._direction = None
         self._pending_activate_window_id = None
@@ -180,12 +189,43 @@ class OverlayController:
         # now decides whether that release steps.
         self._held = False
 
+        # Chooser mode: the panel has keyboard focus and the user is
+        # picking from it, rather than walking past it.
+        #
+        # Entered by HOLDING the shortcut, never by tapping. The two
+        # modes have to stay separate because they want opposite things
+        # from window raising, and raising is what makes them
+        # incompatible: a focused panel that raises a window loses focus
+        # to it immediately and (being a Qt.Popup) hides itself. Measured
+        # live - the panel "kept disappearing".
+        #
+        #   tap    - raise on every step, no focus, dwell commits.
+        #            Fast and unchanged; this is the common gesture.
+        #   hold   - raise NOTHING until Enter, focus, no dwell at all.
+        #            Escape returns where you started.
+        #
+        # So a hold is now "open the chooser", which is the natural end of
+        # it having stopped being a slow tap (see _on_released).
+        self._chooser = False
+
         # Captured in attach() rather than fetched per call: the signal
         # handlers below are sync callbacks invoked by dbus_next from the
         # loop, so get_running_loop() would work there too, but holding the
         # reference makes it obvious there is exactly one loop involved.
         self._loop = None
         self._commit_handle = None
+
+        # When the overlay QML last polled state_json(). It polls every
+        # 80ms while loaded, so this doubles as a liveness heartbeat for
+        # the panel - see _panel_is_gone().
+        self._last_poll = None
+
+        # Optional so the existing tests, which drive the KGlobalAccel
+        # handlers directly with no bus in sight, keep constructing this
+        # unchanged. Without one the chooser simply loses its
+        # focus-moved-away detection; nothing else here reads the bus.
+        if event_bus is not None:
+            event_bus.subscribe(FocusChanged, self._on_focus_changed)
 
     async def attach(self, bus):
         self._loop = asyncio.get_running_loop()
@@ -198,11 +238,100 @@ class OverlayController:
         component.on_global_shortcut_repeated(self._on_repeated)
         component.on_global_shortcut_released(self._on_released)
 
+    def _on_focus_changed(self, event):
+        """
+        KWin's focus stream, watched to notice the chooser being
+        orphaned. Nothing here touches history - NavigationEngine owns
+        that and subscribes separately.
+
+        One of TWO detectors, and neither is sufficient alone:
+
+          - this one fires when focus moves to a DIFFERENT window than
+            KWin currently considers active. Fast and reliable when it
+            applies.
+          - the QML's polled `active` check (see the poll Timer in
+            main.qml) covers the case this one is blind to.
+
+        The blind spot is structural. The panel is not a managed window,
+        so KWin's notion of the active window never changes while the
+        chooser is up. Click back onto the window KWin still thinks is
+        active and there is no windowActivated event at all - measured
+        live (2026-08-12), the chooser sat open for 90 seconds while the
+        user typed into that window, with not one focus event logged.
+
+        Deliberately does NOT raise anything on the way out. The user has
+        just chosen a window by clicking it; cancel()'s "put me back where
+        I started" would yank them straight off it again.
+        """
+        if not event.normal:
+            return
+
+        # ANY normal focus event closes the chooser, including one for the
+        # window the chooser opened over.
+        #
+        # An earlier version compared against an "anchor" - the window
+        # focused when the chooser opened - and ignored matches, meaning
+        # to tolerate a late echo from a raise by a tap preceding the
+        # hold. It was wrong twice over. Wrong in principle: the panel had
+        # focus, so focus arriving anywhere else is a departure regardless
+        # of destination. And wrong in practice - measured live
+        # (2026-08-12), clicking straight back onto the window the chooser
+        # opened over matched the anchor, was ignored, and wedged the
+        # shortcut until the user happened to focus some third window
+        # minutes later ("it fixed itself while typing this out").
+        #
+        # The echo it guarded against cannot reach here anyway. Nothing is
+        # raised in chooser mode, and a hold cannot open the chooser until
+        # the keyboard's 600ms auto-repeat delay has elapsed, by which
+        # time any preceding tap's echo has long landed. The same journal
+        # confirms it directly: neither chooser open produced a focus
+        # event, the first arrivals being 10s and 12s later.
+        # The one thing that would break this outright is KWin reporting
+        # the PANEL itself as a normal focus change - the chooser would
+        # then close the instant it opened. It does not: the panel is not
+        # a KWin-managed window, so it never enters this stream at all.
+        # Confirmed by logging every focus event reaching here across a
+        # full round of chooser testing (2026-08-12) - every one named a
+        # real application, none named the overlay.
+        if self._chooser:
+            self.dismiss()
+
+    def _panel_is_gone(self):
+        """
+        Whether the overlay QML has stopped polling, i.e. the panel that
+        was supposed to be driving the open chooser no longer exists.
+
+        The chooser has no timeout by design - it ends on Enter or Escape
+        and nothing else - which makes it the one piece of state that can
+        wedge permanently. The panel normally reports its own dismissal
+        (see onActiveChanged in the QML), but that cannot cover the panel
+        being destroyed outright: a KWin script reload, a KWin restart, a
+        crash. Then nobody ever sends Escape, _chooser stays True, and
+        every later tap silently moves the highlight of a panel that
+        isn't there while raising nothing - the shortcut appears dead.
+        Reported live (2026-08-12) as "meta-tab doesn't do anything now".
+
+        Uses the existing 80ms GetPeekState poll as the heartbeat rather
+        than adding a timeout, so there is still no clock the user has to
+        beat - only a check that the other end is alive at all.
+        """
+        if self._last_poll is None or self._loop is None:
+            return True
+
+        return self._loop.time() - self._last_poll > _PANEL_HEARTBEAT_SECONDS
+
     def _on_pressed(self, component_unique, shortcut_unique, timestamp):
         direction = _SHORTCUT_DIRECTIONS.get(shortcut_unique)
 
         if direction is None:
             return
+
+        # Recover from an orphaned chooser before the press is counted, so
+        # this reads as an ordinary first press of a fresh gesture rather
+        # than a continuation of the dead one.
+        if self._chooser and self._panel_is_gone():
+            self._engine.abandon_walk()
+            self._reset_gesture()
 
         # Counted across the whole gesture, not per direction: tapping the
         # opposite way mid-walk is still the user driving the same walk,
@@ -242,11 +371,23 @@ class OverlayController:
 
         self._held = True
         self._overlay_armed = True
+        self._chooser = True
 
     def _on_released(self, component_unique, shortcut_unique, timestamp):
         direction = _SHORTCUT_DIRECTIONS.get(shortcut_unique)
 
         if direction is None or direction != self._direction:
+            return
+
+        # With the chooser open, a tap of the shortcut is just another way
+        # to move the highlight - exactly what Up/Down do - and raises
+        # nothing. Returning here also means no commit is scheduled: a
+        # focused chooser ends on Enter or Escape and never on a timer,
+        # so there is no clock to beat while you read the list.
+        if self._chooser:
+            if not self._held:
+                self._engine.step(direction)
+
             return
 
         # A hold peeks; it does not travel.
@@ -286,12 +427,100 @@ class OverlayController:
 
         self._commit_handle = self._loop.call_later(_DWELL_SECONDS, self._commit)
 
-    def _commit(self):
-        self._commit_handle = None
+    def _reset_gesture(self):
+        if self._commit_handle is not None:
+            self._commit_handle.cancel()
+            self._commit_handle = None
+
         self._direction = None
         self._presses = 0
         self._overlay_armed = False
+        self._chooser = False
+        self._held = False
+
+    def _commit(self):
+        self._commit_handle = None
+        self._reset_gesture()
         self._engine.commit_walk()
+
+    # ---- Chooser operations, driven by the focused panel over D-Bus ----
+    #
+    # These exist because a focused panel is the only place a
+    # select/confirm/cancel gesture can come from. KGlobalAccel reports
+    # only the two BackNav shortcuts, so Up/Down/Enter/Escape are not
+    # visible to the daemon at all - the QML has keyboard focus, reads
+    # them, and calls these. See NavigatorService.
+
+    def move_highlight(self, direction):
+        """
+        Up/Down in the chooser. Moves the walk WITHOUT raising anything -
+        that deferral is the whole reason the chooser can hold focus.
+        """
+        if not self._chooser:
+            return
+
+        self._engine.step(direction)
+
+    def confirm(self):
+        """
+        Enter in the chooser: raise where the highlight stands and promote
+        it, the same end state a tap-driven walk reaches via its dwell.
+        """
+        if not self._chooser:
+            return
+
+        # Read BEFORE committing - commit_walk() promotes the landed entry
+        # to the front, after which "where the highlight was" is no longer
+        # recoverable from the walk offset.
+        item = self._engine.current
+
+        self._engine.commit_walk()
+        self._reset_gesture()
+
+        if item is not None:
+            restore_item(item)
+            self._pending_activate_window_id = item.window_id
+
+    def dismiss(self):
+        """
+        Close the chooser without raising anything and without reordering.
+
+        The difference from cancel() is entirely about focus. Escape means
+        "I did not want any of these, put me back", so cancel() raises the
+        window you started from. Dismiss means "focus already went
+        somewhere else" - clicking another window, or the panel losing
+        keyboard focus - so the right window is already frontmost and
+        raising would drag the user off it.
+
+        Idempotent, because both detectors can fire for the same event:
+        the QML's polled check and KWin's focus stream are deliberately
+        overlapping (see _on_focus_changed).
+        """
+        if not self._chooser:
+            return
+
+        self._engine.abandon_walk()
+        self._reset_gesture()
+
+    def cancel(self):
+        """
+        Escape in the chooser: back where you started, MRU order untouched.
+
+        Raises explicitly rather than just closing the panel. Nothing was
+        raised while the chooser was open, so the window you started on is
+        still the right one - but the panel took keyboard focus off it, so
+        somebody has to give it back.
+        """
+        if not self._chooser:
+            return
+
+        item = self._engine.abandon_walk()
+
+        self._reset_gesture()
+
+        if item is not None:
+            restore_item(item)
+            self._pending_activate_window_id = item.window_id
 
     def state_json(self) -> str:
         """
@@ -301,6 +530,13 @@ class OverlayController:
         to tell this to clear it (see this class's docstring for why
         that's a deliberate simplification, not an oversight).
         """
+        # Being called at all is the panel proving it is alive - see
+        # _panel_is_gone(). Stamped before the early return below, since a
+        # panel polling an inactive overlay is just as alive as one
+        # polling an active it.
+        if self._loop is not None:
+            self._last_poll = self._loop.time()
+
         activate_window_id, self._pending_activate_window_id = self._pending_activate_window_id, None
 
         # activateWindowId still rides out on an inactive report, which is
@@ -320,6 +556,13 @@ class OverlayController:
         return json.dumps({
             "active": True,
             "direction": self._direction,
+
+            # Tells the panel to take keyboard focus and accept
+            # Up/Down/Enter/Escape. False for a tap-driven walk, which
+            # must stay unfocused - see the _chooser comment in __init__
+            # for why focus and per-step raising cannot coexist.
+            "chooser": self._chooser,
+
             "highlightIndex": highlight,
             "entries": [{"app": item.app, "title": item.title} for item in entries],
             "activateWindowId": activate_window_id,

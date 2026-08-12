@@ -119,6 +119,78 @@ can, same as `backnav-kwin/`'s existing `activateWindow()` - this
 package has its own copy since it can't reach into the other script's
 JS state).
 
+## The chooser, and why closing it needs two detectors
+
+Holding the shortcut past the keyboard's auto-repeat delay opens the
+panel as a **chooser**: it takes keyboard focus, Up/Down move the
+highlight, Enter confirms, Escape returns you where you started. There
+is no timeout - it stays up until you decide.
+
+Taking focus is what makes it work and also what makes it dangerous. A
+chooser that stays open after you have moved on is a window silently
+eating your keystrokes, and it wedges the shortcut too, since the daemon
+still thinks a gesture is in progress. Closing it reliably turned out to
+need three separate mechanisms, because each has a blind spot the others
+cover.
+
+**1. Focus moving to a different window** - `OverlayController`
+subscribes to KWin's focus stream and dismisses on any normal focus
+event. Fast and cheap.
+
+An earlier version compared each event against an "anchor" (the window
+focused when the chooser opened) and ignored matches, meaning to tolerate
+a late echo from a preceding tap's raise. That was wrong in principle -
+the panel had focus, so focus arriving anywhere else is a departure
+regardless of destination - and wrong in practice: clicking straight back
+onto the window the chooser opened over matched the anchor, was ignored,
+and wedged the shortcut until some third window happened to get focus
+minutes later. Reported live as *"it fixed itself while typing this
+out."*
+
+**2. Focus returning to the window the chooser opened over** - detector
+1 cannot see this at all, and the reason is structural: **the panel is
+not a KWin-managed window.** KWin's idea of the active window never
+changes while the chooser is up, so clicking back onto that same window
+produces no `windowActivated` and the daemon hears nothing. Measured
+(2026-08-12): the chooser sat open for 90 seconds while the user typed
+into another window, with not one focus event logged.
+
+The QML side covers it, via a finding worth stating on its own:
+
+> **`onActiveChanged` never fires with `false` for this window, but the
+> `active` property does go false, reliably.** The signal is what is
+> missing, not the state.
+
+So the 80ms poll **samples** `root.active` rather than watching the
+signal, and calls `DismissSelection()` when it sees focus gone. Absence
+of a signal is not absence of the state behind it - worth remembering
+before concluding a property is unusable.
+
+Two details this needs:
+
+- It is gated on having **held** focus first (`hadFocus`), not merely on
+  lacking it. `requestActivate()` is asynchronous, so `chooser=true,
+  active=false` is legitimate for a poll or two after the chooser opens;
+  acting on that would dismiss it ~80ms after it appeared, every time.
+- It calls `DismissSelection`, **not** `CancelSelection`. Cancel means
+  "I did not want any of these, put me back" and raises the origin
+  window. Dismiss raises nothing, because focus has already gone
+  somewhere the user chose and raising would drag them off it.
+
+**3. The panel ceasing to exist** - if the QML is unloaded or crashes
+mid-chooser, neither detector above ever fires and the shortcut stays
+wedged forever. The daemon stamps `_last_poll` on every `GetPeekState()`
+and treats twelve missed polls (`_PANEL_HEARTBEAT_SECONDS = 1.0`) as a
+dead panel, recovering on the next press. This is deliberately **not** a
+chooser timeout - it only fires for a panel that has stopped polling.
+
+One thing that would break detector 1 outright is KWin reporting the
+panel itself as a normal focus change, which would close the chooser the
+instant it opened. It does not, for the same reason detector 2 is needed
+at all: an unmanaged window never enters that stream. Confirmed by
+logging every focus event across a full round of chooser testing - every
+one named a real application, none named the overlay.
+
 ## Setup
 
 Needs installing as its own KWin script package:
@@ -192,19 +264,31 @@ provably alive and polling 12x/sec. Uncaught exceptions in QML handlers
 are therefore invisible too, which is what makes the cache problem
 above so hard to spot: broken code and stale code look identical.
 
-The workaround is to report over D-Bus instead, via the temporary
-`Probe(s)` method on `com.backnav.Navigator` (see
-`core/navigator_service.py`) called through a `KWinComponents.DBusCall`,
-so output lands in the daemon's journal:
+The workaround, when something here needs debugging, is to report over
+D-Bus instead: add a temporary `Probe(s) -> s` method to
+`com.backnav.Navigator` (see `core/navigator_service.py`) that just
+`print`s, call it through a `KWinComponents.DBusCall`, and read the
+daemon's journal:
 
 ```
 journalctl --user -u backnav.service -f | grep PROBE
 ```
 
-One caveat: all probe messages sharing a single `DBusCall` object will
-drop messages when they fire in quick succession, since each overwrites
-the previous one's argument. Counts from it are a lower bound, not a
-tally.
+Three things that cost time the first time round:
+
+- **Pass the argument as a binding**, `arguments: [root.probeNote]`, not
+  by assigning `probeCall.arguments = [...]` imperatively. The
+  imperative form silently does nothing, and with QML logging going
+  nowhere there is no way to see the throw.
+- **Give the method a return value.** A void-returning D-Bus method
+  leaves KWin's `DBusCall` with nothing to hand `onFinished`, and the
+  call never leaves the overlay. Match `GetPeekState`'s `-> "s"` shape.
+- **Messages sharing one `DBusCall` object drop** when they fire in
+  quick succession, since each overwrites the previous one's argument.
+  Counts from it are a lower bound, not a tally.
+
+The probes are removed once they have answered their question; what
+they established is written up in place at the code they explain.
 
 `backnav-kwin/`'s Back/Forward shortcuts have no default keybinding
 (never did - "KWin scripts can't safely presume a free key combo"), so

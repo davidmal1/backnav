@@ -72,6 +72,20 @@ async function reportActiveTab() {
     }
 }
 
+// Every tab id currently open, sent on connect so the daemon can reconcile
+// rather than trust that it received every closure.
+//
+// reportActiveTab() above covers a dropped tab_changed, because the next
+// switch corrects it anyway. A dropped tab_closed has no such recovery -
+// nothing ever mentions a closed tab again - so the entry sits in the
+// switcher forever, pointing at a tab that cannot be activated. Closures
+// while the daemon is down are lost exactly this way.
+async function reportLiveTabs() {
+    const tabs = await browser.tabs.query({});
+
+    send({ event: "tabs_alive", ids: tabs.map((tab) => tab.id) });
+}
+
 function handleServerMessage(event) {
     let data;
 
@@ -95,6 +109,7 @@ function handleServerMessage(event) {
 function connect() {
     socket = new WebSocket(WS_URL);
 
+    socket.addEventListener("open", reportLiveTabs);
     socket.addEventListener("open", reportActiveTab);
     socket.addEventListener("message", handleServerMessage);
     socket.addEventListener("close", scheduleReconnect);

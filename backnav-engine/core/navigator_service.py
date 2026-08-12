@@ -74,26 +74,43 @@ class NavigatorService(ServiceInterface):
     def GetPeekState(self) -> "s":
         return self._overlay.state_json()
 
-    # ---- TEMPORARY INPUT PROBE (remove once answered) ----------------
+    # ---- Chooser, driven by the focused overlay panel ------------------
     #
-    # A logging channel for the overlay QML, which has none of its own:
-    # console.log/console.warn from a KWin declarativescript reach neither
-    # the user nor the system journal (verified - the QML is provably
-    # alive, polling GetPeekState 12x/sec, yet emits nothing). D-Bus out
-    # plus daemon logging are two paths already known to work, so the
-    # probe borrows them.
-    # Returns "s" rather than nothing purely to match GetPeekState/
-    # Navigate, the two call shapes already proven to work from the QML
-    # side. A void-returning method gave KWin's DBusCall nothing to hand
-    # to onFinished and the call never left the overlay.
+    # Only meaningful while GetPeekState() reports chooser: true. The
+    # daemon cannot see Up/Down/Enter/Escape itself - KGlobalAccel reports
+    # only the two BackNav shortcuts - so the panel, which does have
+    # keyboard focus in that mode, reads them and calls these.
+    #
+    # All three no-op unless the chooser is actually open, so a stale
+    # panel or a duplicate call cannot navigate anything.
+
+    # All three return "s" rather than nothing purely to match
+    # GetPeekState/Navigate, the call shapes proven to work from
+    # KWinComponents.DBusCall. Whether a void-returning method works there
+    # is genuinely untested - the one attempt was made while the QML was
+    # silently running from a stale cache, so it proved nothing either
+    # way. Not worth re-litigating for a return value nobody reads.
+
     @method()
-    def Probe(self, note: "s") -> "s":
-        print(f"backnav: PROBE {note}", flush=True)
+    def MoveHighlight(self, direction: "s") -> "s":
+        self._overlay.move_highlight(direction)
         return "ok"
 
-    # Bisect: identical to Probe but takes NO arguments, so it isolates
-    # whether passing `arguments` is what stops the QML call leaving.
     @method()
-    def ProbePing(self) -> "s":
-        print("backnav: PROBE ping (no-arg call arrived)", flush=True)
+    def ConfirmSelection(self) -> "s":
+        self._overlay.confirm()
+        return "ok"
+
+    @method()
+    def CancelSelection(self) -> "s":
+        self._overlay.cancel()
+        return "ok"
+
+    # Not the same as CancelSelection: this one raises nothing. Called by
+    # the panel's own poll loop when it notices it has lost keyboard
+    # focus, where the window the user just clicked is already frontmost
+    # and Cancel's "put me back where I started" would drag them off it.
+    @method()
+    def DismissSelection(self) -> "s":
+        self._overlay.dismiss()
         return "ok"

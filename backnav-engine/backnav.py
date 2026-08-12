@@ -32,7 +32,12 @@ async def main():
     # OverlayController's docstring for why) - shares this same bus
     # connection since dbus_next lets one MessageBus both export our
     # service and act as a client to another one (kglobalaccel).
-    overlay = OverlayController(engine)
+    # Given the event bus as well as the engine: besides driving the
+    # gesture from KGlobalAccel, it watches KWin's focus stream to notice
+    # the chooser being orphaned when the user clicks away from it. The
+    # panel itself cannot report that - measured live, it stays alive and
+    # polling with no `active` change at all.
+    overlay = OverlayController(engine, event_bus)
     await overlay.attach(dbus_bus)
 
     dbus_bus.export(OBJECT_PATH, NavigatorService(engine, overlay))

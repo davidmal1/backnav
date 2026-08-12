@@ -96,24 +96,36 @@ Window {
     // Qt.X11BypassWindowManagerHint, which is a no-op on Wayland, so on
     // this session they are effectively plain popups, and they do get
     // keys.
-    // RESULT: Qt.Popup | Qt.FramelessWindowHint plus requestActivate()
-    // DOES work - window.active went true and Qt.Key_Down arrived. Keys
-    // are therefore possible, and this is the combination to come back
-    // to.
+    // Whether the daemon has the CHOOSER open (a held shortcut) rather
+    // than a tap-driven walk. Only the chooser takes focus.
+    property bool chooser: false
+
+    // Qt.Popup is what makes keys possible, and it is applied only in
+    // chooser mode.
     //
-    // Reverted for now because it is not usable on its own. Raising the
-    // target window is this script's other job (activateWindow() below),
-    // and a focused panel fights it: every tap raises the target, the
-    // target takes focus, the panel loses it, and a Qt.Popup that loses
-    // focus hides itself. Observed live as the panel "kept disappearing
-    // or was not visible".
+    // Measured: with Qt.BypassWindowManagerHint the panel is transparent
+    // to the keyboard - hover and tap arrive, no key ever does, and
+    // window.active is never true. KWin will not focus a window that asks
+    // not to be managed, and no focus means no keys. Qt.Popup plus
+    // requestActivate() produced window.active=true and a real
+    // Qt.Key_Down.
     //
-    // The fix is not a flag, it is a model change - a focused panel must
-    // defer raising until the selection is CONFIRMED, the way Alt+Tab
-    // does. Until that is built, Bypass is the correct behaviour: no
-    // focus, no fight, panel stays put.
-    flags: Qt.BypassWindowManagerHint | Qt.FramelessWindowHint
+    // It must NOT be applied to a tap-driven walk. That mode raises the
+    // target window on every step, the target takes focus, the panel
+    // loses it, and a Qt.Popup that loses focus hides itself - observed
+    // live as the panel "kept disappearing or was not visible". The
+    // chooser can hold focus precisely because it raises nothing until
+    // Enter.
+    flags: chooser
+        ? (Qt.Popup | Qt.FramelessWindowHint)
+        : (Qt.BypassWindowManagerHint | Qt.FramelessWindowHint)
+
     visible: showing
+
+    // Flags make focus possible; they do not ask for it. KWin's own
+    // tabbox skips this only because its C++ side grabs the keyboard.
+    onChooserChanged: if (chooser && showing) requestActivate()
+    onShowingChanged: if (chooser && showing) requestActivate()
 
     width: rowWidth + 24
     height: Math.max(Math.min(entries.count, 8), 1) * rowHeight + 24
@@ -132,72 +144,10 @@ Window {
         border.width: 1
     }
 
-    // ---- TEMPORARY INPUT PROBE (remove once answered) ----------------
-    //
-    // Establishes whether this window can receive input at all, which
-    // decides whether the list can be driven with up/down and the mouse.
-    //
-    // Unknown because KWin's own switchers are not a precedent: they get
-    // key events from KWin's C++ TabBox keyboard GRAB, which we do not
-    // have, and they use Qt.X11BypassWindowManagerHint (a no-op on
-    // Wayland) where this window uses the cross-platform
-    // Qt.BypassWindowManagerHint, which does apply and asks KWin not to
-    // manage or focus us.
-    //
-    // Deliberately logging only - no window flags are touched here, so
-    // this cannot change how the panel behaves on screen.
-    //
-    // Reported over D-Bus rather than console.log/console.warn, because
-    // QML logging from a declarativescript goes nowhere at all: this
-    // window is provably alive (it polls GetPeekState 12x/sec) and still
-    // produced not one line in the user or system journal.
-    property string probeNote: ""
-
-    function probe(note) {
-        root.probeNote = note;
-        probeCall.call();
-    }
-
-    KWinComponents.DBusCall {
-        id: probeCall
-        service: "com.backnav.Navigator"
-        path: "/com/backnav/Navigator"
-        dbusInterface: "com.backnav.Navigator"
-        method: "Probe"
-        // A binding rather than an imperative probeCall.arguments = [...]
-        // assignment. The imperative form silently did nothing, and with
-        // QML logging going nowhere there is no way to see the throw.
-        arguments: [root.probeNote]
-        onFinished: function(returnValue) {}
-    }
-
-    onActiveChanged: probe("window.active=" + active)
-
-    // Fired from a Timer rather than Component.onCompleted so that a
-    // failure here distinguishes itself: onCompleted runs before the
-    // script is fully wired up, and if THAT was the problem rather than
-    // the arguments assignment, this still reports.
-    KWinComponents.DBusCall {
-        id: probePing
-        service: "com.backnav.Navigator"
-        path: "/com/backnav/Navigator"
-        dbusInterface: "com.backnav.Navigator"
-        method: "ProbePing"
-        onFinished: function(returnValue) {}
-    }
-
-    Timer {
-        interval: 1500
-        running: true
-        repeat: false
-        onTriggered: {
-            // Ping FIRST and unconditionally. If only this arrives, the
-            // problem is passing `arguments`; if neither arrives, the
-            // problem is this Timer or the script never re-instantiating.
-            probePing.call();
-            root.probe("loaded, flags=" + root.flags);
-        }
-    }
+    // There is deliberately no onActiveChanged handler here. It fires on
+    // GAINING focus and has never once been observed firing with false,
+    // so focus loss is sampled in the poll Timer below instead - see the
+    // comment there.
 
     ListView {
         id: listView
@@ -206,12 +156,37 @@ Window {
         model: entries
         interactive: false
 
-        // PROBE: does anything deliver keys here? focus:true only sets
-        // focus WITHIN this window - it cannot take focus from the user's
-        // actual window, so it is safe even if the answer is no.
         focus: true
+
+        // Up/Down/Enter/Escape exist only here. The daemon cannot see
+        // them - KGlobalAccel reports just the two BackNav shortcuts - so
+        // this window, which has keyboard focus in chooser mode, reads
+        // them and calls the daemon.
+        //
+        // The highlight is still driven entirely by the daemon's reply,
+        // not moved locally: ListView's built-in key navigation moves its
+        // own currentIndex, which this delegate does not render, so
+        // handling these here and letting the next poll bring back the
+        // new highlightIndex keeps one source of truth.
         Keys.onPressed: function(event) {
-            probe("key=" + event.key + " text=" + event.text);
+            if (!root.chooser)
+                return;
+
+            if (event.key === Qt.Key_Down) {
+                root.callChooser(moveCall, "back");
+            } else if (event.key === Qt.Key_Up) {
+                root.callChooser(moveCall, "forward");
+            } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                root.callChooser(confirmCall, null);
+            } else if (event.key === Qt.Key_Escape) {
+                root.callChooser(cancelCall, null);
+            } else {
+                return;
+            }
+
+            // Only reached for keys actually handled above, so anything
+            // else still falls through to whatever would normally get it.
+            event.accepted = true;
         }
 
         delegate: Rectangle {
@@ -220,16 +195,12 @@ Window {
             radius: 4
             color: index === root.highlightIndex ? "#4080c0ff" : "transparent"
 
-            // PROBE: hover is the more sensitive of the two - it shows
-            // whether pointer events reach this surface at all, even if
-            // clicks turn out to be swallowed somewhere above us.
-            HoverHandler {
-                onHoveredChanged: if (hovered) root.probe("hover row=" + index)
-            }
-
-            TapHandler {
-                onTapped: root.probe("tap row=" + index)
-            }
+            // Pointer events DO reach these rows - hover and tap both
+            // arrive, in both flag modes, since pointer input routes by
+            // position and is unaffected by the panel being unmanaged.
+            // Wiring them to MoveHighlight/ConfirmSelection is the
+            // outstanding mouse-selection work; the handlers are left out
+            // until then rather than left in doing nothing.
 
             Text {
                 anchors.fill: parent
@@ -272,11 +243,101 @@ Window {
         }
     }
 
+    // Whether the panel has actually held keyboard focus during THIS
+    // chooser. Latched, and cleared with the chooser itself in
+    // closePanel(), so "never got focus yet" cannot be mistaken for
+    // "lost focus" - see the poll Timer.
+    property bool hadFocus: false
+
     Timer {
         interval: 80
         running: true
         repeat: true
-        onTriggered: poll.call()
+        onTriggered: {
+            poll.call();
+
+            // root.active is SAMPLED here rather than watched via
+            // onActiveChanged, which has never once fired with false -
+            // the panel reports gaining focus and never losing it.
+            // Measured (2026-08-12): the signal is what is missing, not
+            // the state. The property itself goes false perfectly
+            // reliably, so polling sees the loss that the signal never
+            // announces.
+            if (root.chooser && root.active)
+                root.hadFocus = true;
+
+            // Losing keyboard focus ends the chooser. KWin's own focus
+            // stream cannot see this: the panel is not a managed window,
+            // so clicking back onto the window KWin already considers
+            // active produces no windowActivated at all and the daemon
+            // hears nothing. Measured live (2026-08-12) - the chooser sat
+            // open for 90 seconds while the user typed into another
+            // window, with not one focus event logged.
+            //
+            // Dismiss, not cancel: cancel RAISES the window you started
+            // from, which would drag you off whatever you just clicked.
+            //
+            // Gated on having HELD focus first, not merely on not having
+            // it. requestActivate() is asynchronous, so for the first
+            // poll or two after the chooser opens the panel legitimately
+            // has chooser=true and active=false - acting on that would
+            // dismiss the chooser roughly 80ms after it appeared, every
+            // single time.
+            if (root.chooser && root.hadFocus && !root.active)
+                root.callChooser(dismissCall, null);
+        }
+    }
+
+    // ---- Chooser calls -------------------------------------------------
+    //
+    // Separate DBusCall objects per method rather than one reconfigured
+    // in place: `method` is a declared property and rewriting it per call
+    // races against the in-flight call's own reply.
+    property string chooserArg: ""
+
+    function callChooser(call, arg) {
+        if (arg !== null)
+            root.chooserArg = arg;
+
+        call.call();
+    }
+
+    KWinComponents.DBusCall {
+        id: moveCall
+        service: "com.backnav.Navigator"
+        path: "/com/backnav/Navigator"
+        dbusInterface: "com.backnav.Navigator"
+        method: "MoveHighlight"
+        arguments: [root.chooserArg]
+        onFinished: function(returnValue) {}
+    }
+
+    KWinComponents.DBusCall {
+        id: confirmCall
+        service: "com.backnav.Navigator"
+        path: "/com/backnav/Navigator"
+        dbusInterface: "com.backnav.Navigator"
+        method: "ConfirmSelection"
+        onFinished: function(returnValue) {}
+    }
+
+    KWinComponents.DBusCall {
+        id: cancelCall
+        service: "com.backnav.Navigator"
+        path: "/com/backnav/Navigator"
+        dbusInterface: "com.backnav.Navigator"
+        method: "CancelSelection"
+        onFinished: function(returnValue) {}
+    }
+
+    // Close the chooser without raising anything - see the poll Timer.
+    KWinComponents.DBusCall {
+        id: dismissCall
+        service: "com.backnav.Navigator"
+        path: "/com/backnav/Navigator"
+        dbusInterface: "com.backnav.Navigator"
+        method: "DismissSelection"
+        onFinished: function(returnValue) {}
     }
 
     KWinComponents.DBusCall {
@@ -303,12 +364,21 @@ Window {
     Timer {
         id: dwell
         interval: 700
-        onTriggered: {
-            root.showing = false;
-            root.contentKey = "";
-            entries.clear();
-            root.highlightIndex = -1;
-        }
+        onTriggered: root.closePanel()
+    }
+
+    // Deliberately not named hide(): Window already has one, and it sets
+    // visible directly, which would fight the `visible: showing` binding
+    // rather than replace it.
+    function closePanel() {
+        dwell.stop();
+
+        root.showing = false;
+        root.chooser = false;
+        root.hadFocus = false;
+        root.contentKey = "";
+        entries.clear();
+        root.highlightIndex = -1;
     }
 
     function applyState(state) {
@@ -332,10 +402,22 @@ Window {
             // Always applied, model rebuild or not: within one gesture the
             // rows hold still and this is the only thing that changes.
             root.highlightIndex = state.highlightIndex;
+            root.chooser = state.chooser === true;
 
             // An exhausted history reports active with zero entries; showing
             // an empty panel would be worse than showing nothing.
             root.showing = entries.count > 0;
+        } else if (root.chooser) {
+            // The chooser never lingers. It ends only on an explicit Enter
+            // or Escape, so by the time the daemon reports inactive the
+            // decision is already made and acted on - holding a stale list
+            // up for another 700ms would just be in the way, and Escape in
+            // particular should feel like the panel was never there.
+            //
+            // It also must not linger: this window has keyboard focus in
+            // chooser mode, so a lingering panel is a window still eating
+            // the user's keystrokes after they have moved on.
+            closePanel();
         } else if (root.showing && !dwell.running) {
             // Gesture just ended - leave the last rendered contents on
             // screen until the timer fires so the user can still read

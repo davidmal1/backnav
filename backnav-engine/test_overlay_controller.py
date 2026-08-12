@@ -1,5 +1,7 @@
 import unittest.mock as mock
 
+from core.events.event_bus import EventBus
+from core.events.focus_changed import FocusChanged
 from core.overlay_controller import _MAX_PEEK_DEPTH, OverlayController
 
 # --- OverlayController's press/repeat/release state machine, tested
@@ -35,6 +37,15 @@ class FakeLoop:
 
     def __init__(self):
         self.handles = []
+
+        # Advanced by hand. The panel-liveness heartbeat is the one piece
+        # of OverlayController that reads the clock, and a test that
+        # actually slept a second to prove a one-second timeout would be
+        # the slowest thing in the suite by an order of magnitude.
+        self.now = 1000.0
+
+    def time(self):
+        return self.now
 
     def call_later(self, delay, callback):
         handle = FakeHandle(delay, callback)
@@ -145,15 +156,307 @@ with mock.patch("core.overlay_controller.restore_item") as fake_restore:
 fake_engine.step.assert_not_called()
 fake_restore.assert_not_called()
 
-# It must still CLOSE the gesture, though, or the panel would hang on
-# screen until some later tap happened to commit it.
-assert len(loop.live) == 1, "a hold must still schedule its commit"
-loop.fire()
-fake_engine.commit_walk.assert_called_once_with()
-assert controller._direction is None
-assert '"active": false' in controller.state_json()
+# Instead the hold has opened the CHOOSER: the panel takes keyboard
+# focus and the user picks from it. That is reported to the QML, which
+# is what makes it apply Qt.Popup and call requestActivate().
+assert controller._chooser is True
+assert '"chooser": true' in controller.state_json()
 
+# No dwell, and this is the point of the mode: a focused chooser ends on
+# an explicit Enter or Escape, never on a timer. Scheduling a commit here
+# would put the old clock back and reintroduce the time pressure that
+# made reversing onto earlier rows impractical.
+assert len(loop.live) == 0, "the chooser must not schedule a commit"
+
+# A tap of the shortcut with the chooser open moves the highlight exactly
+# like Up/Down do - and, crucially, raises nothing. Raising is what a
+# focused panel cannot survive: the target takes focus, the Qt.Popup
+# loses it and hides itself.
+with mock.patch("core.overlay_controller.restore_item") as fake_restore:
+    controller._on_pressed("kwin", "BackNavBack", 0)
+    controller._on_released("kwin", "BackNavBack", 0)
+
+fake_engine.step.assert_called_once_with("back")
+fake_restore.assert_not_called()
+assert len(loop.live) == 0, "a tap inside the chooser must not start a dwell"
+
+# Up/Down arrive over D-Bus, since KGlobalAccel never sees them.
+fake_engine.step.reset_mock()
+controller.move_highlight("forward")
+fake_engine.step.assert_called_once_with("forward")
+
+# Enter commits: it raises where the highlight stands AND promotes it.
+# The entry has to be read BEFORE commit_walk(), which moves it to the
+# front - reading after would always raise whatever ended up at index 0.
+#
+# `current` is deliberately made to CHANGE across commit_walk() here, the
+# way the real engine's does once the walk collapses. Left as a constant
+# the two orderings are indistinguishable and this pins nothing.
+fake_engine.step.reset_mock()
 fake_engine.commit_walk.reset_mock()
+landed = mock.Mock(title="landed", window_id="99", restore_type=None, restore_id=None)
+after_commit = mock.Mock(
+    title="after_commit", window_id="100", restore_type=None, restore_id=None
+)
+fake_engine.current = landed
+fake_engine.commit_walk.side_effect = lambda: setattr(
+    fake_engine, "current", after_commit
+)
+
+with mock.patch("core.overlay_controller.restore_item") as fake_restore:
+    controller.confirm()
+    fake_restore.assert_called_once_with(landed)
+
+fake_engine.commit_walk.side_effect = None
+
+fake_engine.commit_walk.assert_called_once_with()
+assert controller._chooser is False
+assert '"active": false' in controller.state_json()
+assert '"activateWindowId": "99"' not in controller.state_json(), "popped once only"
+
+# Escape cancels: back where the gesture started, MRU order untouched.
+# It still has to RAISE that entry - nothing was raised while the chooser
+# was open, but the panel took keyboard focus, so something must hand it
+# back.
+fake_engine.commit_walk.reset_mock()
+origin = mock.Mock(title="origin", window_id="7", restore_type=None, restore_id=None)
+fake_engine.abandon_walk.return_value = origin
+
+controller._on_pressed("kwin", "BackNavBack", 0)
+controller._on_repeated("kwin", "BackNavBack", 0)
+assert controller._chooser is True
+
+with mock.patch("core.overlay_controller.restore_item") as fake_restore:
+    controller.cancel()
+    fake_restore.assert_called_once_with(origin)
+
+fake_engine.abandon_walk.assert_called_once_with()
+assert not fake_engine.commit_walk.called, "cancel must not reorder the MRU"
+assert controller._chooser is False
+
+# The chooser operations are inert unless the chooser is actually open, so
+# a stale panel or a duplicate call cannot navigate anything.
+fake_engine.step.reset_mock()
+fake_engine.commit_walk.reset_mock()
+fake_engine.abandon_walk.reset_mock()
+
+controller.move_highlight("back")
+controller.confirm()
+controller.cancel()
+
+fake_engine.step.assert_not_called()
+fake_engine.commit_walk.assert_not_called()
+fake_engine.abandon_walk.assert_not_called()
+
+# --- An orphaned chooser must not wedge the shortcut ------------------
+#
+# The chooser has no timeout, which is what makes it comfortable to read
+# and also what makes it the one piece of state that can stick forever.
+# The panel reports its own dismissal, but a panel DESTROYED outright - a
+# KWin script reload, a crash - never gets to. _chooser then stays True
+# and every later tap moves the highlight of a panel that isn't there
+# while raising nothing, so the shortcut presents as completely dead.
+# Reported live (2026-08-12) as "meta-tab doesn't do anything now".
+fake_engine.step.reset_mock()
+fake_engine.abandon_walk.reset_mock()
+loop.handles = []
+
+controller._on_pressed("kwin", "BackNavBack", 0)
+controller._on_repeated("kwin", "BackNavBack", 0)
+controller._on_released("kwin", "BackNavBack", 0)
+assert controller._chooser is True
+
+# The panel is alive as long as it keeps polling, so a tap here is an
+# ordinary chooser tap: it moves the highlight and raises nothing.
+controller.state_json()
+loop.now += 0.4
+fake_engine.step.reset_mock()
+
+with mock.patch("core.overlay_controller.restore_item") as fake_restore:
+    controller._on_pressed("kwin", "BackNavBack", 0)
+    controller._on_released("kwin", "BackNavBack", 0)
+
+fake_engine.step.assert_called_once_with("back")
+fake_restore.assert_not_called()
+assert controller._chooser is True, "a polling panel is a live panel"
+
+# Now the panel stops polling. The very next tap must behave as a normal
+# tap of a fresh gesture - walk one and raise it - not as the second tap
+# of a chooser nobody can see.
+loop.now += 5.0
+fake_engine.step.reset_mock()
+landed_again = mock.Mock(
+    title="landed_again", window_id="55", restore_type=None, restore_id=None
+)
+fake_engine.step.return_value = landed_again
+
+with mock.patch("core.overlay_controller.restore_item") as fake_restore:
+    controller._on_pressed("kwin", "BackNavBack", 0)
+    assert controller._chooser is False, "a silent panel must not hold the chooser open"
+    controller._on_released("kwin", "BackNavBack", 0)
+    fake_restore.assert_called_once_with(landed_again)
+
+fake_engine.step.assert_called_once_with("back")
+assert '"activateWindowId": "55"' in controller.state_json()
+
+# The walk that the dead chooser had opened is abandoned rather than
+# committed - the user never chose anything, so promoting whatever the
+# invisible highlight happened to rest on would silently reorder the MRU.
+fake_engine.abandon_walk.assert_called_once_with()
+
+fake_engine.step.return_value = mock.Mock(
+    title="x", window_id="1", restore_type=None, restore_id=None
+)
+fake_engine.step.reset_mock()
+fake_engine.abandon_walk.reset_mock()
+fake_engine.commit_walk.reset_mock()
+loop.handles = []
+
+# The same must hold when no panel has EVER polled, not just when one
+# stopped. That is not a hypothetical: the overlay is a separate KWin
+# script and BackNav has to keep working with it unloaded, uninstalled,
+# or broken. Holding the shortcut then opens a chooser with nothing on
+# screen to drive it, and without this the very first hold would wedge
+# the shortcut permanently on a fresh daemon.
+controller._last_poll = None
+controller._on_pressed("kwin", "BackNavBack", 0)
+controller._on_repeated("kwin", "BackNavBack", 0)
+controller._on_released("kwin", "BackNavBack", 0)
+assert controller._chooser is True
+
+controller._last_poll = None
+
+with mock.patch("core.overlay_controller.restore_item") as fake_restore:
+    controller._on_pressed("kwin", "BackNavBack", 0)
+    assert controller._chooser is False, (
+        "a chooser no panel ever polled must not survive the next press"
+    )
+    controller._on_released("kwin", "BackNavBack", 0)
+    fake_restore.assert_called_once()
+
+fake_engine.step.reset_mock()
+fake_engine.abandon_walk.reset_mock()
+fake_engine.commit_walk.reset_mock()
+controller._reset_gesture()
+controller.state_json()
+loop.handles = []
+
+# --- Clicking another window closes the chooser -----------------------
+#
+# The case the two mechanisms above both miss. Clicking away does not
+# destroy the panel and does not even unfocus it as far as the QML can
+# tell - measured live, it kept polling and kept receiving hover events,
+# reporting no `active` change whatsoever. So the panel cannot be the one
+# to notice, and the heartbeat sees a perfectly healthy panel. KWin's
+# focus stream is the only place the truth exists.
+bus = EventBus()
+focus_engine = mock.Mock()
+focus_engine.walk_view.return_value = ([], -1)
+focus_loop = FakeLoop()
+focus_controller = OverlayController(focus_engine, bus)
+focus_controller._loop = focus_loop
+
+bus.publish(FocusChanged(app="konsole", window_id="origin", title="Konsole"))
+
+focus_controller._on_pressed("kwin", "BackNavBack", 0)
+focus_controller._on_repeated("kwin", "BackNavBack", 0)
+focus_controller._on_released("kwin", "BackNavBack", 0)
+assert focus_controller._chooser is True
+
+# A dialog or other non-normal window is not a focus change -
+# NavigationEngine ignores those for the same reason.
+focus_controller.state_json()
+bus.publish(FocusChanged(app="konsole", window_id="dialog", title="Save?", normal=False))
+assert focus_controller._chooser is True, "a transient dialog must not close the chooser"
+
+# Clicking a real, different window does close it - abandoning the walk,
+# because the user picked with the mouse rather than choosing from the
+# list, so nothing in the panel should be promoted.
+with mock.patch("core.overlay_controller.restore_item") as fake_restore:
+    bus.publish(FocusChanged(app="signal", window_id="clicked", title="Signal"))
+
+    # Crucially it raises NOTHING. The clicked window already has focus;
+    # cancel()'s "put me back where I started" would drag the user
+    # straight off it again.
+    fake_restore.assert_not_called()
+
+assert focus_controller._chooser is False, "clicking away must close the chooser"
+focus_engine.abandon_walk.assert_called_once_with()
+assert '"active": false' in focus_controller.state_json()
+assert '"activateWindowId": null' in focus_controller.state_json()
+
+# And the shortcut is immediately usable again - the whole point.
+focus_engine.step.reset_mock()
+landed = mock.Mock(title="next", window_id="88", restore_type=None, restore_id=None)
+focus_engine.step.return_value = landed
+
+with mock.patch("core.overlay_controller.restore_item") as fake_restore:
+    focus_controller._on_pressed("kwin", "BackNavBack", 0)
+    focus_controller._on_released("kwin", "BackNavBack", 0)
+    fake_restore.assert_called_once_with(landed)
+
+focus_engine.step.assert_called_once_with("back")
+
+# Clicking straight back onto the window the chooser opened OVER closes
+# it too. This is the case that shipped broken: an earlier version kept
+# an "anchor" - the window focused when the chooser opened - and ignored
+# focus events matching it, on the theory that they were echoes of a
+# raise rather than the user. But the panel holds focus while the chooser
+# is open, so focus arriving at the origin window is just as much a
+# departure as focus arriving anywhere else. Measured live (2026-08-12):
+# it wedged the shortcut until some third window happened to be focused
+# minutes later.
+focus_engine.abandon_walk.reset_mock()
+focus_controller._on_pressed("kwin", "BackNavBack", 0)
+focus_controller._on_repeated("kwin", "BackNavBack", 0)
+focus_controller._on_released("kwin", "BackNavBack", 0)
+assert focus_controller._chooser is True
+
+# "clicked" is the window focused when this chooser opened - it was the
+# last focus event published, above.
+bus.publish(FocusChanged(app="signal", window_id="clicked", title="Signal"))
+assert focus_controller._chooser is False, (
+    "clicking the window the chooser opened over must still close it"
+)
+focus_engine.abandon_walk.assert_called_once_with()
+
+# --- dismiss(): the panel noticing it lost focus ----------------------
+#
+# The second detector, and the one that covers what KWin's focus stream
+# structurally cannot see. The panel is not a managed window, so KWin's
+# active window never changes while the chooser is up - click back onto
+# the window it already considers active and no windowActivated fires at
+# all. Measured live (2026-08-12): the chooser stayed open for 90 seconds
+# while the user typed into that window, with nothing logged.
+focus_engine.abandon_walk.reset_mock()
+focus_controller._on_pressed("kwin", "BackNavBack", 0)
+focus_controller._on_repeated("kwin", "BackNavBack", 0)
+focus_controller._on_released("kwin", "BackNavBack", 0)
+assert focus_controller._chooser is True
+
+# Drain the activateWindowId left pending by the tap further up, so the
+# assertion below is about what dismiss() does rather than about history.
+focus_controller.state_json()
+
+with mock.patch("core.overlay_controller.restore_item") as fake_restore:
+    focus_controller.dismiss()
+
+    # Raises nothing, unlike cancel(). Focus has already moved to
+    # whatever the user clicked; putting them back where they started
+    # would drag them off it.
+    fake_restore.assert_not_called()
+
+assert focus_controller._chooser is False
+focus_engine.abandon_walk.assert_called_once_with()
+assert not focus_engine.commit_walk.called, "dismiss must not reorder the MRU"
+assert '"activateWindowId": null' in focus_controller.state_json()
+
+# Idempotent, because both detectors can fire for the same event - they
+# deliberately overlap rather than being mutually exclusive.
+focus_engine.abandon_walk.reset_mock()
+focus_controller.dismiss()
+focus_controller.dismiss()
+focus_engine.abandon_walk.assert_not_called()
 loop.handles = []
 
 # ...but a TAP still steps. The removal above has to be specific to holds
