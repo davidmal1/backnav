@@ -37,6 +37,15 @@ def _make_handler(event_bus):
 
                 connections[instance_id] = websocket
 
+                # Carries no state - its only job is to be traffic, so
+                # Chrome's service-worker idle timer keeps getting reset
+                # (see the keepalive in chromium/background.js). Skipped
+                # before the tab handling below, which would otherwise
+                # KeyError on the fields a keepalive does not carry and
+                # kill the connection outright.
+                if data["event"] == "keepalive":
+                    continue
+
                 if data["event"] == "tab_closed":
                     event_bus.publish(BrowserTabClosed(
                         connection_id=instance_id,
