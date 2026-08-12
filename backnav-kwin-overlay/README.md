@@ -132,6 +132,80 @@ manual-copy/reload gap as `backnav-kwin/` itself; see the spun-off dev
 sync/reload follow-up task, which should ideally cover this package
 too once it exists.)
 
+### Reloading after an edit - `-u` alone is NOT enough
+
+Installing the new file does not put the new file on screen, and this
+fails **silently**: the panel keeps running the previous version while
+every command reports success.
+
+```
+kpackagetool6 --type KWin/Script -u backnav-kwin-overlay   # updates disk
+qdbus6 org.kde.KWin /Scripting ...unloadScript backnav-overlay
+qdbus6 org.kde.KWin /KWin reconfigure                      # reloads...
+```
+
+That sequence looks convincing - `unloadScript` really does unload
+(`isScriptLoaded` goes `false`, and the 80ms `GetPeekState` polling
+stops dead), `reconfigure` really does reload, and `isScriptLoaded`
+goes back to `true`. But Qt's QML engine caches compiled components
+**by URL**, and unloading a KWin script does not clear that cache. The
+reload therefore re-instantiates the OLD compiled QML from the same
+path.
+
+Measured (2026-08-12): with `interval: 400` installed and verified on
+disk, the live poll rate stayed at exactly 12.5/sec - the old 80ms
+value. Several rounds of overlay "fixes" before this was found had
+never once been on screen.
+
+The reliable way to reload in a live session is to load the QML from a
+**fresh path** each time, so the cache misses:
+
+```
+qdbus6 org.kde.KWin /Scripting ...unloadScript bn-probe
+cp contents/ui/main.qml /tmp/bn-probe/probe-$(date +%s).qml
+qdbus6 org.kde.KWin /Scripting ...loadDeclarativeScript \
+    /tmp/bn-probe/probe-<ts>.qml bn-probe
+qdbus6 org.kde.KWin /Scripting ...start
+qdbus6 org.kde.KWin /Scripting ...unloadScript backnav-overlay
+```
+
+The last line matters: `start()` starts every enabled script, which
+brings the installed `backnav-overlay` back up alongside the temporary
+copy. Two instances means two overlays and two pollers - visible as a
+doubled `GetPeekState` rate (~25/sec rather than ~12.5/sec), which is
+the quickest way to check for it:
+
+```
+timeout 3 dbus-monitor --session "interface='com.backnav.Navigator'" \
+    > /tmp/m.txt; grep -c GetPeekState /tmp/m.txt   # ~37 = one instance
+```
+
+Still install the package with `-u` as well - that is what makes the
+change survive, since KWin re-reads it from scratch at next login when
+the component cache is empty.
+
+### There is no logging from this QML
+
+`console.log` **and** `console.warn` from a declarativescript reach
+neither the user nor the system journal - verified while the window was
+provably alive and polling 12x/sec. Uncaught exceptions in QML handlers
+are therefore invisible too, which is what makes the cache problem
+above so hard to spot: broken code and stale code look identical.
+
+The workaround is to report over D-Bus instead, via the temporary
+`Probe(s)` method on `com.backnav.Navigator` (see
+`core/navigator_service.py`) called through a `KWinComponents.DBusCall`,
+so output lands in the daemon's journal:
+
+```
+journalctl --user -u backnav.service -f | grep PROBE
+```
+
+One caveat: all probe messages sharing a single `DBusCall` object will
+drop messages when they fire in quick succession, since each overwrites
+the previous one's argument. Counts from it are a lower bound, not a
+tally.
+
 `backnav-kwin/`'s Back/Forward shortcuts have no default keybinding
 (never did - "KWin scripts can't safely presume a free key combo"), so
 one needs assigning under System Settings > Shortcuts > BackNav before

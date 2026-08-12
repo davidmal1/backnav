@@ -73,3 +73,27 @@ class NavigatorService(ServiceInterface):
     @method()
     def GetPeekState(self) -> "s":
         return self._overlay.state_json()
+
+    # ---- TEMPORARY INPUT PROBE (remove once answered) ----------------
+    #
+    # A logging channel for the overlay QML, which has none of its own:
+    # console.log/console.warn from a KWin declarativescript reach neither
+    # the user nor the system journal (verified - the QML is provably
+    # alive, polling GetPeekState 12x/sec, yet emits nothing). D-Bus out
+    # plus daemon logging are two paths already known to work, so the
+    # probe borrows them.
+    # Returns "s" rather than nothing purely to match GetPeekState/
+    # Navigate, the two call shapes already proven to work from the QML
+    # side. A void-returning method gave KWin's DBusCall nothing to hand
+    # to onFinished and the call never left the overlay.
+    @method()
+    def Probe(self, note: "s") -> "s":
+        print(f"backnav: PROBE {note}", flush=True)
+        return "ok"
+
+    # Bisect: identical to Probe but takes NO arguments, so it isolates
+    # whether passing `arguments` is what stops the QML call leaving.
+    @method()
+    def ProbePing(self) -> "s":
+        print("backnav: PROBE ping (no-arg call arrived)", flush=True)
+        return "ok"

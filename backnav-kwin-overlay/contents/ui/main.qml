@@ -80,6 +80,38 @@ Window {
     property string contentKey: ""
 
     color: "transparent"
+
+    // ---- STAGE 2 EXPERIMENT: can this window take keyboard focus? -----
+    //
+    // Was Qt.BypassWindowManagerHint | Qt.FramelessWindowHint. The probe
+    // proved that combination is input-transparent to the KEYBOARD while
+    // still receiving the pointer: hover and tap both arrived, no key
+    // event ever did, and window.active never once became true. Bypass
+    // tells KWin not to manage or focus this window, and no focus means
+    // no key delivery; pointer events route by position and so are
+    // unaffected.
+    //
+    // Qt.Popup is what KWin's own switchers use (see
+    // /usr/share/kwin/tabbox/compact/) - they pair it with
+    // Qt.X11BypassWindowManagerHint, which is a no-op on Wayland, so on
+    // this session they are effectively plain popups, and they do get
+    // keys.
+    // RESULT: Qt.Popup | Qt.FramelessWindowHint plus requestActivate()
+    // DOES work - window.active went true and Qt.Key_Down arrived. Keys
+    // are therefore possible, and this is the combination to come back
+    // to.
+    //
+    // Reverted for now because it is not usable on its own. Raising the
+    // target window is this script's other job (activateWindow() below),
+    // and a focused panel fights it: every tap raises the target, the
+    // target takes focus, the panel loses it, and a Qt.Popup that loses
+    // focus hides itself. Observed live as the panel "kept disappearing
+    // or was not visible".
+    //
+    // The fix is not a flag, it is a model change - a focused panel must
+    // defer raising until the selection is CONFIRMED, the way Alt+Tab
+    // does. Until that is built, Bypass is the correct behaviour: no
+    // focus, no fight, panel stays put.
     flags: Qt.BypassWindowManagerHint | Qt.FramelessWindowHint
     visible: showing
 
@@ -100,6 +132,73 @@ Window {
         border.width: 1
     }
 
+    // ---- TEMPORARY INPUT PROBE (remove once answered) ----------------
+    //
+    // Establishes whether this window can receive input at all, which
+    // decides whether the list can be driven with up/down and the mouse.
+    //
+    // Unknown because KWin's own switchers are not a precedent: they get
+    // key events from KWin's C++ TabBox keyboard GRAB, which we do not
+    // have, and they use Qt.X11BypassWindowManagerHint (a no-op on
+    // Wayland) where this window uses the cross-platform
+    // Qt.BypassWindowManagerHint, which does apply and asks KWin not to
+    // manage or focus us.
+    //
+    // Deliberately logging only - no window flags are touched here, so
+    // this cannot change how the panel behaves on screen.
+    //
+    // Reported over D-Bus rather than console.log/console.warn, because
+    // QML logging from a declarativescript goes nowhere at all: this
+    // window is provably alive (it polls GetPeekState 12x/sec) and still
+    // produced not one line in the user or system journal.
+    property string probeNote: ""
+
+    function probe(note) {
+        root.probeNote = note;
+        probeCall.call();
+    }
+
+    KWinComponents.DBusCall {
+        id: probeCall
+        service: "com.backnav.Navigator"
+        path: "/com/backnav/Navigator"
+        dbusInterface: "com.backnav.Navigator"
+        method: "Probe"
+        // A binding rather than an imperative probeCall.arguments = [...]
+        // assignment. The imperative form silently did nothing, and with
+        // QML logging going nowhere there is no way to see the throw.
+        arguments: [root.probeNote]
+        onFinished: function(returnValue) {}
+    }
+
+    onActiveChanged: probe("window.active=" + active)
+
+    // Fired from a Timer rather than Component.onCompleted so that a
+    // failure here distinguishes itself: onCompleted runs before the
+    // script is fully wired up, and if THAT was the problem rather than
+    // the arguments assignment, this still reports.
+    KWinComponents.DBusCall {
+        id: probePing
+        service: "com.backnav.Navigator"
+        path: "/com/backnav/Navigator"
+        dbusInterface: "com.backnav.Navigator"
+        method: "ProbePing"
+        onFinished: function(returnValue) {}
+    }
+
+    Timer {
+        interval: 1500
+        running: true
+        repeat: false
+        onTriggered: {
+            // Ping FIRST and unconditionally. If only this arrives, the
+            // problem is passing `arguments`; if neither arrives, the
+            // problem is this Timer or the script never re-instantiating.
+            probePing.call();
+            root.probe("loaded, flags=" + root.flags);
+        }
+    }
+
     ListView {
         id: listView
         anchors.fill: parent
@@ -107,11 +206,30 @@ Window {
         model: entries
         interactive: false
 
+        // PROBE: does anything deliver keys here? focus:true only sets
+        // focus WITHIN this window - it cannot take focus from the user's
+        // actual window, so it is safe even if the answer is no.
+        focus: true
+        Keys.onPressed: function(event) {
+            probe("key=" + event.key + " text=" + event.text);
+        }
+
         delegate: Rectangle {
             width: listView.width
             height: root.rowHeight
             radius: 4
             color: index === root.highlightIndex ? "#4080c0ff" : "transparent"
+
+            // PROBE: hover is the more sensitive of the two - it shows
+            // whether pointer events reach this surface at all, even if
+            // clicks turn out to be swallowed somewhere above us.
+            HoverHandler {
+                onHoveredChanged: if (hovered) root.probe("hover row=" + index)
+            }
+
+            TapHandler {
+                onTapped: root.probe("tap row=" + index)
+            }
 
             Text {
                 anchors.fill: parent
