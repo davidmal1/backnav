@@ -118,7 +118,32 @@ Window {
                 anchors.leftMargin: 8
                 verticalAlignment: Text.AlignVCenter
                 elide: Text.ElideRight
-                color: "white"
+
+                // Rows the walk has already gone past are dimmed rather
+                // than dropped.
+                //
+                // They pile up above the highlight as a gesture gets
+                // longer and, at full brightness, read as live options -
+                // reported live from a two-step walk as the top rows
+                // becoming "noise/confusing", the more so because the
+                // dwell makes reversing onto them with Forward impractical
+                // in the time available.
+                //
+                // Dimming rather than removing keeps the list still and
+                // the highlight moving, which is what Alt+Tab does and
+                // what makes the reordering legible. Rendering only from
+                // the highlight down was the alternative and was rejected
+                // twice now: it pins the highlight to row 0 and scrolls
+                // the whole list up on every tap, which was observed live
+                // as entries appearing from nowhere. See
+                // NavigationEngine.walk_view().
+                //
+                // (walk_view()'s own reason for keeping these rows - that
+                // a bounce needs to see the entry it came from - no longer
+                // applies, since a one-tap bounce does not draw the panel
+                // at all any more. This is what replaces it.)
+                color: index < root.highlightIndex ? "#80ffffff" : "white"
+
                 // Plain "app — title" text list for now - the final
                 // product is meant to add an app icon (and possibly the
                 // app's display name rather than its resourceClass), per
