@@ -48,6 +48,7 @@ function connect() {
     // events would be recorded as if they had all just happened.
     // (Same approach as thunderbird/background.js, which had it first.)
     socket.onopen = () => {
+        reportLiveTabs();
         reportActiveTab();
         startKeepalive();
     };
@@ -131,6 +132,9 @@ async function publish(tab) {
 // Lets the daemon drop this tab from history's back/forward targets -
 // re-activating a closed tab is a silent no-op that just makes navigation
 // look stuck, so it needs to know to skip past it instead.
+//
+// Best-effort: if the socket is not up when a tab closes, this is simply
+// lost. reportLiveTabs() below is what makes that survivable.
 async function publishClosed(tabId) {
     if (!socket || socket.readyState !== WebSocket.OPEN)
         return;
@@ -139,6 +143,30 @@ async function publishClosed(tabId) {
         event: "tab_closed",
         instanceId: await getInstanceId(),
         id: tabId
+    }));
+}
+
+// Every tab id this browser currently has, sent on connect so the daemon
+// can reconcile rather than trust that it received every closure.
+//
+// reportActiveTab() above covers a dropped tab_changed, because the next
+// switch would correct it anyway. A dropped tab_closed has no such
+// recovery - nothing ever mentions a closed tab again - so the entry sits
+// in the switcher forever, pointing at a tab that cannot be activated.
+// Observed live (2026-08-12) on the Chromium side, where an MV3 worker
+// respawning on the onRemoved event guarantees the drop; here the window
+// is smaller (a persistent background page keeps the socket up) but
+// closures during daemon downtime are lost exactly the same way.
+async function reportLiveTabs() {
+    const tabs = await chrome.tabs.query({});
+
+    if (!socket || socket.readyState !== WebSocket.OPEN)
+        return;
+
+    socket.send(JSON.stringify({
+        event: "tabs_alive",
+        instanceId: await getInstanceId(),
+        ids: tabs.map((tab) => tab.id)
     }));
 }
 

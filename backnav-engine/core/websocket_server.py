@@ -1,8 +1,10 @@
 import asyncio
 import json
 
+from core.events.browser_disconnected import BrowserDisconnected
 from core.events.browser_tab_changed import BrowserTabChanged
 from core.events.browser_tab_closed import BrowserTabClosed
+from core.events.browser_tabs_alive import BrowserTabsAlive
 
 clients = set()
 
@@ -53,6 +55,22 @@ def _make_handler(event_bus):
                     ))
                     continue
 
+                # Sent once per connection, immediately on open. Logged
+                # because it is low-volume (one line per reconnect) and
+                # because a closure lost while the worker was respawning
+                # is otherwise completely invisible - this is the line
+                # that says how many entries the reconciliation retired.
+                if data["event"] == "tabs_alive":
+                    print(
+                        f"backnav: {instance_id} reports {len(data['ids'])} live tabs",
+                        flush=True,
+                    )
+                    event_bus.publish(BrowserTabsAlive(
+                        connection_id=instance_id,
+                        tab_ids=frozenset(data["ids"]),
+                    ))
+                    continue
+
                 event_bus.publish(BrowserTabChanged(
                     browser=data["browser"],
                     connection_id=instance_id,
@@ -70,6 +88,14 @@ def _make_handler(event_bus):
             if instance_id is not None and connections.get(instance_id) is websocket:
                 del connections[instance_id]
                 print(f"backnav: browser extension disconnected ({instance_id})", flush=True)
+
+                # Release what the engine learned about this connection.
+                # Deliberately inside the "still ours" check: a fast
+                # reconnect under the same instanceId has already replaced
+                # the mapping, and telling the engine to forget a
+                # connection that is currently live would unbind a working
+                # browser.
+                event_bus.publish(BrowserDisconnected(connection_id=instance_id))
 
     return handler
 

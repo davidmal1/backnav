@@ -1,3 +1,8 @@
 __pycache__/
 *.pyc
-backnav-engine/certs/
+# No trailing slash, deliberately. A trailing slash matches directories
+# only, and in a linked worktree this path is a SYMLINK to the main
+# worktree's certs dir (one source of truth for the private key), which
+# such a rule does not match - leaving it showing as untracked and
+# stageable by `git add -A`. Without the slash both forms are ignored.
+backnav-engine/certs

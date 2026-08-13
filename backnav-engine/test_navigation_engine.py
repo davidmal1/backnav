@@ -31,27 +31,40 @@ event_bus.publish(FocusChanged(app="Claude", window_id="4", title="Claude"))
 event_bus.publish(FocusChanged(app="Claude", window_id="4", title="Claude"))
 event_bus.publish(FocusChanged(app="Claude", window_id="4", title="Claude"))
 
-titles = []
-while True:
-    current = engine.current
-    titles.append(current.title if current else None)
-    if engine.back() is None:
-        break
-
-titles.reverse()
-print("Recorded history:", titles)
-
-expected = [
-    "architecture.md",
-    "journalctl",
-    "New Tab",
-    "GitHub - BackNav",
-    "Docs",
-    "architecture.md",
-    "Docs",
-    "journalctl",
+# Ordering is most-recently-used, front first - not a linear log of every
+# switch. Revisiting somewhere promotes its existing entry instead of
+# appending a second one, so the nine focus/tab events above collapse to
+# the six distinct targets they actually touched: Kate and Konsole each
+# appear once despite being visited twice. Brave's window-level "New Tab"
+# fallback sits at the back because it stopped being the active target as
+# soon as the extension reported a real tab.
+expected_mru = [
     "Claude",
+    "journalctl",
+    "Docs",
+    "architecture.md",
+    "GitHub - BackNav",
+    "New Tab",
 ]
 
-assert titles == expected, f"expected {expected}, got {titles}"
+mru = [item.title for item in engine._history.all_items()]
+print("MRU order:", mru)
+assert mru == expected_mru, f"expected {expected_mru}, got {mru}"
+
+# Walking back from the front must visit exactly that order, and stop at
+# the end rather than wrapping.
+walked = [engine.current.title]
+while True:
+    item = engine.back()
+    if item is None:
+        break
+    walked.append(item.title)
+
+assert walked == expected_mru, f"expected {expected_mru}, got {walked}"
+
+# That walk was never committed, so it must have left the ordering
+# untouched - see HistoryManager on why reordering mid-gesture would make
+# most of this list unreachable.
+assert [item.title for item in engine._history.all_items()] == expected_mru
+
 print("OK")

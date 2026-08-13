@@ -1,6 +1,10 @@
+from contextlib import contextmanager
+
 from adapters.registry import ADAPTERS_BY_APP, ADAPTERS_BY_RESTORE_TYPE
+from core.events.browser_disconnected import BrowserDisconnected
 from core.events.browser_tab_changed import BrowserTabChanged
 from core.events.browser_tab_closed import BrowserTabClosed
+from core.events.browser_tabs_alive import BrowserTabsAlive
 from core.events.focus_changed import FocusChanged
 from core.events.window_caption_changed import WindowCaptionChanged
 from core.events.window_closed import WindowClosed
@@ -16,19 +20,85 @@ from core.models.focus_item import FocusItem
 # `windowId`, so we can't correlate a tab event to a specific KWin window -
 # we treat "one instance of the app" as a single logical window, which
 # matches every scenario this project has designed for so far.
-TAB_EXTENSION_APPS = {
-    "brave-browser",
-    "vivaldi-stable",
-    "Vivaldi-snap",
-    "google-chrome",
-    "chromium-browser",
-    "chromium",
-    "microsoft-edge",
-    "firefox",
-    "firefox_firefox",
+#
+# Grouped by the `browser` family name the extension sends (see
+# browser/*/background.js) rather than kept as one flat set, because
+# "which app could this tab event have come from" is a question that has
+# to be answerable per event - see _may_own() and the misattribution it
+# exists to prevent.
+TAB_EXTENSION_APPS_BY_FAMILY = {
+    "chromium": {
+        "brave-browser",
+        "vivaldi-stable",
+        "Vivaldi-snap",
+        "google-chrome",
+        "chromium-browser",
+        "chromium",
+        "microsoft-edge",
+    },
+    "firefox": {
+        "firefox",
+        "firefox_firefox",
+    },
     # Confirmed live via the KWin script's own event log.
-    "thunderbird",
+    "thunderbird": {
+        "thunderbird",
+    },
 }
+
+TAB_EXTENSION_APPS = set().union(*TAB_EXTENSION_APPS_BY_FAMILY.values())
+
+
+def _may_own(app, family):
+    """
+    Could a window of resource class `app` be the one that sent a tab
+    event from extension family `family`?
+
+    The guard against cross-app tab misattribution. Reported live
+    (2026-08-12) as a "thunderbird - SnakeoilOS" row sitting directly
+    above the real "brave-browser - SnakeoilOS": a BACKGROUND Brave tab
+    refreshing its title while Thunderbird had focus was stamped with
+    Thunderbird's identity, because the only test being applied was "is
+    the focused app *a* tab-extension app", which Thunderbird is.
+
+    Unknown families are permitted against any tab-extension app rather
+    than rejected, so adding a browser to browser/ can't silently break
+    tab tracking until someone remembers to update this table. The
+    window-identity checks in _on_browser_tab_changed still apply, so
+    permissiveness here costs correctness only in the narrow case of two
+    same-family browsers (Vivaldi and Brave both report "chromium").
+    """
+    if app not in TAB_EXTENSION_APPS:
+        return False
+
+    owners = TAB_EXTENSION_APPS_BY_FAMILY.get(family)
+
+    return True if owners is None else app in owners
+
+
+def _tab_owner(item):
+    """
+    Split a browser-tab entry's restore_id back into
+    (connection_id, tab_id), or None if this entry is not a browser tab.
+
+    Gated on restore_type rather than on the shape of the string, which
+    is not safe to infer: Konsole's restore_id is "konsole:{pid}:
+    {session_id}", three colon-separated fields with an integer last, so
+    it parses perfectly as a browser tab. Nothing but the restore_type
+    distinguishes them. That mis-parse would currently be caught by the
+    connection_id comparison downstream - a pid is never a UUID - but
+    only by luck, and it would hand a Konsole session to whichever
+    browser happened to reconnect.
+
+    Past the type check the format is guaranteed by _push_tab, so this
+    does not defend against malformed ids it cannot receive.
+    """
+    if item.restore_type != "browser_tab":
+        return None
+
+    _browser, connection_id, tab_id = item.restore_id.split(":", 2)
+
+    return connection_id, int(tab_id)
 
 
 class NavigationEngine:
@@ -63,10 +133,16 @@ class NavigationEngine:
         # extension messages) but serve the exact same purpose below.
         self._latest_adapter_restore_by_kwin_window = {}
 
+        # Adapter liveness snapshot for the walk currently in progress, or
+        # None when no walk is open. See _liveness_scope().
+        self._live_targets = None
+
         event_bus.subscribe(FocusChanged, self._on_focus_changed)
         event_bus.subscribe(BrowserTabChanged, self._on_browser_tab_changed)
         event_bus.subscribe(WindowClosed, self._on_window_closed)
         event_bus.subscribe(BrowserTabClosed, self._on_browser_tab_closed)
+        event_bus.subscribe(BrowserTabsAlive, self._on_browser_tabs_alive)
+        event_bus.subscribe(BrowserDisconnected, self._on_browser_disconnected)
         event_bus.subscribe(WindowCaptionChanged, self._on_window_caption_changed)
 
     def _on_focus_changed(self, event: FocusChanged):
@@ -120,7 +196,7 @@ class NavigationEngine:
     def _on_browser_tab_changed(self, event: BrowserTabChanged):
         browser_window_key = (event.connection_id, event.window_id)
 
-        if self._current_app in TAB_EXTENSION_APPS:
+        if self._may_bind(browser_window_key, event.browser):
             self._kwin_window_for_browser_window[browser_window_key] = self._current_window_id
 
         kwin_window_id = self._kwin_window_for_browser_window.get(browser_window_key)
@@ -128,8 +204,43 @@ class NavigationEngine:
         if kwin_window_id is not None:
             self._latest_tab_by_kwin_window[kwin_window_id] = event
 
-        if self._current_app in TAB_EXTENSION_APPS:
+        # Only a tab belonging to the window that currently HAS focus is a
+        # navigation. Everything else is background chatter - a title
+        # refresh, a page finishing load, a tab activating in another
+        # window - and stamping that with the focused window's identity is
+        # what produced the "thunderbird - SnakeoilOS" corruption. Note
+        # this is deliberately window identity, not app identity: two
+        # windows of the same browser must not adopt each other's tabs
+        # either.
+        if kwin_window_id is not None and kwin_window_id == self._current_window_id:
             self._push_tab(event)
+
+    def _may_bind(self, browser_window_key, family):
+        """
+        Whether the focused KWin window can be recorded as the owner of
+        this browser window. Learned on first sight and then effectively
+        permanent, so a wrong answer here corrupts the history until the
+        daemon restarts - hence three separate conditions rather than the
+        single "is a tab app" test this replaces.
+        """
+        if not _may_own(self._current_app, family):
+            return False
+
+        # Already bound. Re-binding on every event is what let a
+        # background tab drag its browser window's mapping over to
+        # whatever was focused at the time.
+        existing = self._kwin_window_for_browser_window.get(browser_window_key)
+
+        if existing is not None:
+            return False
+
+        # A KWin window hosts exactly one browser window, so if this one
+        # is already spoken for, we are looking at someone else's event.
+        # Catches the same-family case (_may_own can't): Brave's first
+        # tab event arriving while Vivaldi happens to be focused.
+        return self._current_window_id not in set(
+            self._kwin_window_for_browser_window.values()
+        )
 
     def _on_window_closed(self, event: WindowClosed):
         self._history.mark_window_dead(event.window_id)
@@ -140,6 +251,16 @@ class NavigationEngine:
         # closed-window entry lying around serves no purpose either way.
         self._latest_tab_by_kwin_window.pop(event.window_id, None)
         self._latest_adapter_restore_by_kwin_window.pop(event.window_id, None)
+
+        # And the binding that named it. A leak rather than a wedge -
+        # KWin never reuses a window id, so a binding to a dead window
+        # can't block a live one the way a dead CONNECTION's can (see
+        # _on_browser_disconnected) - but it would otherwise sit in the
+        # "already spoken for" set forever, which is exactly the state
+        # that made the connection case so hard to see.
+        for key, kwin_window_id in list(self._kwin_window_for_browser_window.items()):
+            if kwin_window_id == event.window_id:
+                del self._kwin_window_for_browser_window[key]
 
     def _on_browser_tab_closed(self, event: BrowserTabClosed):
         # Find every restore_id this (connection, tab) has ever been
@@ -158,6 +279,97 @@ class NavigationEngine:
         for item in self._history.all_items():
             if item.restore_id is not None and item.restore_id.endswith(restore_id_suffix):
                 self._history.mark_tab_dead(item.restore_id)
+
+    def _on_browser_disconnected(self, event: BrowserDisconnected):
+        """
+        Forget everything learned from a connection that has gone away.
+
+        The window binding is the load-bearing part. It is learned once
+        and never revised, and _may_bind() refuses to bind a KWin window
+        that is already spoken for - so a browser returning under a NEW
+        instanceId (extension reloaded, reinstalled, or loaded from a
+        different directory) finds its window permanently claimed by the
+        dead connection and can never bind again. Tab tracking for that
+        browser is then dead until the daemon restarts, silently:
+        switching tabs records nothing, and refocusing the window keeps
+        re-pushing whatever tab was cached before the swap.
+
+        Reported live (2026-08-12) as one Brave tab pinned to the top of
+        the switcher while the tab actually being used sat eight rows
+        down, untouched since the reload.
+
+        An MV3 worker being evicted produces this too, under the same
+        instanceId, and that is fine: the binding is re-learned from the
+        first tab event that arrives while the browser is focused, which
+        the extension sends on connect.
+        """
+        for key in list(self._kwin_window_for_browser_window):
+            if key[0] == event.connection_id:
+                del self._kwin_window_for_browser_window[key]
+
+        # The cached tab goes too. It is only ever a guess about a
+        # background window, and after a disconnect it is a guess made
+        # from information we can no longer confirm - keeping it means
+        # refocusing the browser pushes a tab that may not be active any
+        # more, as a real history entry. The cost of dropping it is one
+        # window-level entry until the extension reports again on
+        # connect, which _is_noop_window_entry already knows to skip.
+        for kwin_window_id, cached in list(self._latest_tab_by_kwin_window.items()):
+            if cached.connection_id == event.connection_id:
+                del self._latest_tab_by_kwin_window[kwin_window_id]
+
+    def _on_browser_tabs_alive(self, event: BrowserTabsAlive):
+        """
+        Reconcile history against the tab set an extension can actually
+        see, which it sends on every (re)connect.
+
+        BrowserTabClosed is best-effort and is *provably* dropped in one
+        routine case: an MV3 service worker respawns on tabs.onRemoved,
+        runs connect() at top level, and the send that follows finds the
+        socket still CONNECTING and returns without sending. The
+        extensions already compensate for that on the tab_changed side by
+        re-reporting the active tab on open - but a closure has no such
+        recovery, because nothing later ever mentions the tab again.
+        Reported live (2026-08-12) as a closed Brave tab still sitting in
+        the chooser.
+
+        So closures are treated as a fast path, not as the source of
+        truth. Anything this connection no longer lists is dead however
+        its closure went missing - worker respawn, daemon downtime, a tab
+        id changed by Chrome's memory-saver discard (tabs.onReplaced,
+        which nothing listens for), or a bug not yet found.
+
+        Both directions, deliberately: see mark_tab_alive().
+        """
+        for item in self._history.all_items():
+            owner = _tab_owner(item)
+
+            if owner is None:
+                continue
+
+            connection_id, tab_id = owner
+
+            # Only this connection's tabs. Another browser's entries are
+            # not this extension's to have an opinion about, and marking
+            # them dead because they are missing from ITS list would wipe
+            # every other browser's history on each reconnect.
+            if connection_id != event.connection_id:
+                continue
+
+            if tab_id in event.tab_ids:
+                self._history.mark_tab_alive(item.restore_id)
+            else:
+                self._history.mark_tab_dead(item.restore_id)
+
+        # Same purge _on_browser_tab_closed does, for the same reason:
+        # a cached tab that no longer exists must not be resurrected by
+        # the next refocus of its window.
+        for kwin_window_id, cached in list(self._latest_tab_by_kwin_window.items()):
+            if (
+                cached.connection_id == event.connection_id
+                and cached.tab_id not in event.tab_ids
+            ):
+                del self._latest_tab_by_kwin_window[kwin_window_id]
 
     def _on_window_caption_changed(self, event: WindowCaptionChanged):
         # See _on_focus_changed - a dialog's caption changing is just as
@@ -227,25 +439,48 @@ class NavigationEngine:
         return self._skip_noop_entries(self._history.forward)
 
     def _skip_noop_entries(self, step):
-        # One snapshot per navigation, shared across every entry this walk
-        # steps over. Asking each adapter afresh per entry would mean a
-        # qdbus6 subprocess plus a SQLite read for every closed tab in a
-        # row, on a keypress; asking once is enough, since nothing can
-        # close a tab in the middle of this loop anyway.
-        live_targets = {}
-
-        item = step()
-
-        while item is not None and (
-            self._is_noop_window_entry(item)
-            or self._is_closed_adapter_tab(item, live_targets)
-        ):
+        with self._liveness_scope():
             item = step()
 
-        return item
+            while item is not None and (
+                self._is_noop_window_entry(item)
+                or self._is_closed_adapter_tab(item)
+            ):
+                item = step()
 
-    @staticmethod
-    def _is_closed_adapter_tab(item: FocusItem, live_targets: dict) -> bool:
+            return item
+
+    @contextmanager
+    def _liveness_scope(self):
+        """
+        Holds one adapter liveness snapshot open for everything inside the
+        block, however many entries get stepped over.
+
+        Re-entrant on purpose, and that re-entrancy is the whole point:
+        walk_view()/peek() render the overlay by calling back() in a loop,
+        and the overlay polls them every 80ms for the length of a gesture.
+        Without an outer scope each of those inner back() calls would open
+        a snapshot of its own - a qdbus6 subprocess plus a SQLite read per
+        row, ~12x a second. With one, a whole render costs a single query
+        (measured 6ms against the real qpdfview).
+
+        Only the outermost scope owns the snapshot; nested ones reuse it
+        and leave the teardown to the owner.
+        """
+        outermost = self._live_targets is None
+
+        if outermost:
+            self._live_targets = {}
+
+        try:
+            yield
+        finally:
+            # Always dropped on the way out rather than kept warm: a tab
+            # closed between two gestures must be noticed by the next one.
+            if outermost:
+                self._live_targets = None
+
+    def _is_closed_adapter_tab(self, item: FocusItem) -> bool:
         # The dead-window/dead-tab sets in HistoryManager only ever learn
         # about closures something reports: KWin's WindowClosed for whole
         # windows, the extension's BrowserTabClosed for browser tabs.
@@ -265,10 +500,10 @@ class NavigationEngine:
         if adapter is None or not hasattr(adapter, "live_targets"):
             return False
 
-        if item.restore_type not in live_targets:
-            live_targets[item.restore_type] = adapter.live_targets()
+        if item.restore_type not in self._live_targets:
+            self._live_targets[item.restore_type] = adapter.live_targets()
 
-        targets = live_targets[item.restore_type]
+        targets = self._live_targets[item.restore_type]
 
         # Couldn't tell (app not running, D-Bus call failed, database
         # unreadable). Assume alive: landing on a stale entry is a much
@@ -302,6 +537,147 @@ class NavigationEngine:
             item.window_id in self._latest_tab_by_kwin_window
             or item.window_id in self._latest_adapter_restore_by_kwin_window
         )
+
+    def peek(self, direction: str, count: int):
+        """
+        Non-mutating preview of up to `count` valid steps from the
+        current position in `direction`, for the overlay (see
+        core/overlay_controller.py) to show where the following taps of
+        the shortcut would land.
+
+        Reuses back()/forward() themselves - not HistoryManager's raw
+        back()/forward() - so the exact same dead-entry/no-op-window
+        skipping rules apply here as they would to a real navigation;
+        otherwise the overlay could preview/highlight an entry that a
+        real step() in the same direction would then skip straight past,
+        landing somewhere else than what was shown. The walk state is
+        snapshotted first and always restored afterwards (even if a
+        caller's `count` overshoots the end of the list) so peeking never
+        has a side effect of its own.
+        """
+        step = self.back if direction == "back" else self.forward
+        saved_walk = self._history.snapshot_walk()
+        items = []
+
+        # One liveness snapshot for the whole preview rather than one per
+        # previewed entry - this runs on the overlay's 80ms poll.
+        with self._liveness_scope():
+            try:
+                for _ in range(count):
+                    item = step()
+                    if item is None:
+                        break
+                    items.append(item)
+            finally:
+                self._history.restore_walk(saved_walk)
+
+        return items
+
+    def walk_view(self, count: int):
+        """
+        The MRU list as a switcher should render it: up to `count` entries
+        counted from the FRONT of the list, plus which of those rows the
+        in-progress walk is currently standing on.
+
+        Deliberately not "the next `count` entries from wherever the walk
+        is". That was the first version, and it made the panel a sliding
+        window with the highlight pinned to row 0, so every tap scrolled
+        the whole list up by one and the entry you had just walked away
+        from vanished off the top - the one entry a bounce depends on
+        being able to see. Observed live and misread as entries appearing
+        from nowhere, which is fair, because between two gestures the
+        commit reorders the list underneath a view that never showed the
+        reordered part.
+
+        Rendering from the front instead keeps the list still and moves
+        the highlight down it, which is what Alt+Tab does and what makes
+        the reordering legible.
+
+        Walks with back() rather than the raw history so dead and no-op
+        entries are skipped exactly as a real navigation would skip them -
+        otherwise the panel could show a row that no tap can ever land on.
+        Returns (entries, highlight_index), with highlight_index -1 when
+        there is nothing to show.
+        """
+        saved_walk = self._history.snapshot_walk()
+
+        try:
+            target = self._history.walk_position()
+
+            # Re-run the walk from the front so the rows come out in
+            # rendered order. The activation set starts empty because
+            # nothing here activates anything.
+            self._history.restore_walk((0, set()))
+
+            first = self._history.current
+
+            if first is None:
+                return [], -1
+
+            entries = [first]
+            highlight = 0 if target == 0 else -1
+
+            # One liveness snapshot for the whole render rather than one
+            # per row - see _liveness_scope(). The overlay calls this every
+            # 80ms for the length of a gesture, so per-row would mean a
+            # qdbus6 subprocess per row, ~12x a second.
+            with self._liveness_scope():
+                while True:
+                    item = self.back()
+
+                    if item is None:
+                        break
+
+                    entries.append(item)
+
+                    if self._history.walk_position() == target:
+                        highlight = len(entries) - 1
+
+                    # Keep going past `count` only while still hunting for
+                    # the highlighted row, so a walk deeper than the panel
+                    # can show is still locatable rather than silently
+                    # unhighlighted.
+                    if highlight != -1 and len(entries) >= count:
+                        break
+        finally:
+            self._history.restore_walk(saved_walk)
+
+        if len(entries) > count:
+            # Scroll the window down just far enough to keep the highlight
+            # on the last row rather than off the bottom.
+            start = max(0, highlight - count + 1)
+            entries = entries[start:start + count]
+            highlight -= start
+
+        return entries, highlight
+
+    def step(self, direction: str):
+        """
+        Advance an in-progress gesture by one entry and return where it
+        landed, for the caller to activate. Deliberately does NOT reorder
+        history - under MRU ordering that only happens in commit_walk(),
+        once the gesture has actually finished. See HistoryManager's
+        docstring for why reordering on every step would make anything
+        past the second entry unreachable.
+        """
+        return self.back() if direction == "back" else self.forward()
+
+    def abandon_walk(self):
+        """
+        Escape out of the focused chooser: go back to where the gesture
+        started and leave the MRU order untouched. See
+        HistoryManager.abandon().
+        """
+        return self._history.abandon()
+
+    def commit_walk(self):
+        """
+        End of gesture: promote wherever the walk landed to the front of
+        the MRU list, so the next gesture counts from there. Fired by the
+        caller after an idle dwell, since KGlobalAccel gives no
+        modifier-release signal that could mark a gesture's end directly.
+        """
+        return self._history.commit()
 
     @property
     def current(self):
