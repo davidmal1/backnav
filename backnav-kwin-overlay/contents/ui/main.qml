@@ -50,12 +50,40 @@
 import QtQuick
 import QtQuick.Window
 import org.kde.kwin as KWinComponents
+import org.kde.kirigami as Kirigami
 
 Window {
     id: root
 
-    readonly property int rowHeight: 28
-    readonly property int rowWidth: 420
+    // One knob for the whole panel. Every dimension below is derived
+    // from it, so resizing is a single edit rather than eight numbers
+    // that have to be kept consistent with each other - and the ratios
+    // between text, icon and padding hold at any setting, which is what
+    // stops a bigger panel from just looking like a stretched one.
+    //
+    // The base figures are the sizes that were on screen at ui: 1.0.
+    readonly property real ui: 1.5
+
+    readonly property int rowHeight: Math.round(36 * ui)
+
+    // Width does NOT keep the proportions the rest of the panel does.
+    // Scaling it with everything else gave an 816px window that read as
+    // dominating the screen (2026-08-13) - a switcher is glanced at, not
+    // worked in. Titles elide rather than wrap, so the cost of a
+    // narrower panel is a few truncated tails, and the icon plus the
+    // start of the title is what actually identifies a row.
+    readonly property int rowWidth: Math.round(390 * ui)
+    readonly property int iconSize: Math.round(24 * ui)
+    readonly property int fontSize: Math.round(13 * ui)
+
+    // Gap between the panel edge and the rows, and between a row's own
+    // contents. Named rather than repeated as bare 12s and 8s, since the
+    // window geometry below has to agree with them exactly or the last
+    // row is clipped.
+    readonly property int panelPadding: Math.round(12 * ui)
+    readonly property int rowSpacing: Math.round(8 * ui)
+    readonly property int panelRadius: Math.round(8 * ui)
+    readonly property int rowRadius: Math.round(4 * ui)
 
     property int highlightIndex: -1
 
@@ -127,8 +155,8 @@ Window {
     onChooserChanged: if (chooser && showing) requestActivate()
     onShowingChanged: if (chooser && showing) requestActivate()
 
-    width: rowWidth + 24
-    height: Math.max(Math.min(entries.count, 8), 1) * rowHeight + 24
+    width: rowWidth + 2 * panelPadding
+    height: Math.max(Math.min(entries.count, 8), 1) * rowHeight + 2 * panelPadding
     x: Screen.virtualX + (Screen.width - width) / 2
     y: Screen.virtualY + (Screen.height - height) / 2
 
@@ -139,7 +167,7 @@ Window {
     Rectangle {
         anchors.fill: parent
         color: "#e6202020"
-        radius: 8
+        radius: root.panelRadius
         border.color: "#40ffffff"
         border.width: 1
     }
@@ -152,7 +180,7 @@ Window {
     ListView {
         id: listView
         anchors.fill: parent
-        anchors.margins: 12
+        anchors.margins: root.panelPadding
         model: entries
         interactive: false
 
@@ -190,55 +218,100 @@ Window {
         }
 
         delegate: Rectangle {
+            id: entryRow
+
             width: listView.width
             height: root.rowHeight
-            radius: 4
+            radius: root.rowRadius
             color: index === root.highlightIndex ? "#4080c0ff" : "transparent"
 
-            // Pointer events DO reach these rows - hover and tap both
-            // arrive, in both flag modes, since pointer input routes by
-            // position and is unaffected by the panel being unmanaged.
-            // Wiring them to MoveHighlight/ConfirmSelection is the
-            // outstanding mouse-selection work; the handlers are left out
-            // until then rather than left in doing nothing.
-
-            Text {
+            // Pointer events reach these rows in BOTH flag modes, since
+            // pointer input routes by position and is unaffected by the
+            // panel being unmanaged. They are acted on only in chooser
+            // mode all the same: a tap-driven walk is on screen for a few
+            // hundred ms and raises a window under the cursor as it goes,
+            // so clicking it would be a race against the panel vanishing.
+            MouseArea {
                 anchors.fill: parent
-                anchors.leftMargin: 8
-                verticalAlignment: Text.AlignVCenter
-                elide: Text.ElideRight
+                hoverEnabled: true
+                acceptedButtons: Qt.LeftButton
 
-                // Rows the walk has already gone past are dimmed rather
-                // than dropped.
-                //
-                // They pile up above the highlight as a gesture gets
-                // longer and, at full brightness, read as live options -
-                // reported live from a two-step walk as the top rows
-                // becoming "noise/confusing", the more so because the
-                // dwell makes reversing onto them with Forward impractical
-                // in the time available.
-                //
-                // Dimming rather than removing keeps the list still and
-                // the highlight moving, which is what Alt+Tab does and
-                // what makes the reordering legible. Rendering only from
-                // the highlight down was the alternative and was rejected
-                // twice now: it pins the highlight to row 0 and scrolls
-                // the whole list up on every tap, which was observed live
-                // as entries appearing from nowhere. See
-                // NavigationEngine.walk_view().
-                //
-                // (walk_view()'s own reason for keeping these rows - that
-                // a bounce needs to see the entry it came from - no longer
-                // applies, since a one-tap bounce does not draw the panel
-                // at all any more. This is what replaces it.)
-                color: index < root.highlightIndex ? "#80ffffff" : "white"
+                // Arming on MOVEMENT, not on entry. The panel opens in the
+                // centre of the screen, which is often exactly where the
+                // pointer already is - and onEntered fires for a row that
+                // merely appeared underneath a stationary cursor. Without
+                // this the highlight would jump to whatever the pointer
+                // happened to be resting on the instant the chooser
+                // opened, stealing it from the keyboard before the user
+                // had touched the mouse.
+                onPositionChanged: {
+                    root.mouseArmed = true;
+                    root.hoverRow(index);
+                }
 
-                // Plain "app — title" text list for now - the final
-                // product is meant to add an app icon (and possibly the
-                // app's display name rather than its resourceClass), per
-                // the original design discussion; left as the simplest
-                // thing that can show real content first.
-                text: model.app + " — " + model.title
+                onEntered: root.hoverRow(index)
+
+                onClicked: if (root.chooser) root.callChooser(confirmCall, null)
+            }
+
+            Row {
+                anchors.fill: parent
+                anchors.leftMargin: root.rowSpacing
+                anchors.rightMargin: root.rowSpacing
+                spacing: root.rowSpacing
+
+                // KWin's own icon for the window, not one resolved from
+                // the resource class. Kirigami.Icon takes a QIcon
+                // directly, which is what Workspace.stackingOrder hands
+                // over - verified by probe (2026-08-13): every window
+                // exposed one and the assignment came back Ready/valid.
+                Kirigami.Icon {
+                    width: root.iconSize
+                    height: root.iconSize
+                    anchors.verticalCenter: parent.verticalCenter
+                    source: root.iconFor(model.windowId)
+                    opacity: index < root.highlightIndex ? 0.5 : 1.0
+                }
+
+                Text {
+                    width: entryRow.width - root.iconSize - 3 * root.rowSpacing
+                    anchors.verticalCenter: parent.verticalCenter
+                    verticalAlignment: Text.AlignVCenter
+                    elide: Text.ElideRight
+                    font.pixelSize: root.fontSize
+
+                    // Rows the walk has already gone past are dimmed rather
+                    // than dropped.
+                    //
+                    // They pile up above the highlight as a gesture gets
+                    // longer and, at full brightness, read as live options -
+                    // reported live from a two-step walk as the top rows
+                    // becoming "noise/confusing", the more so because the
+                    // dwell makes reversing onto them with Forward impractical
+                    // in the time available.
+                    //
+                    // Dimming rather than removing keeps the list still and
+                    // the highlight moving, which is what Alt+Tab does and
+                    // what makes the reordering legible. Rendering only from
+                    // the highlight down was the alternative and was rejected
+                    // twice now: it pins the highlight to row 0 and scrolls
+                    // the whole list up on every tap, which was observed live
+                    // as entries appearing from nowhere. See
+                    // NavigationEngine.walk_view().
+                    //
+                    // (walk_view()'s own reason for keeping these rows - that
+                    // a bounce needs to see the entry it came from - no longer
+                    // applies, since a one-tap bounce does not draw the panel
+                    // at all any more. This is what replaces it.)
+                    color: index < root.highlightIndex ? "#80ffffff" : "white"
+
+                    // Title only. The app used to be spelled out here as
+                    // "app — title", but the app field is a resourceClass and
+                    // reads badly: "org.kde.dolphin",
+                    // "qpdfview.local.qpdfview", "firefox_firefox". The icon
+                    // to the left now carries that, and carries it better.
+                    text: model.title
+                }
             }
         }
     }
@@ -248,6 +321,44 @@ Window {
     // closePanel(), so "never got focus yet" cannot be mistaken for
     // "lost focus" - see the poll Timer.
     property bool hadFocus: false
+
+    // Whether the pointer has actually MOVED during this chooser. Until
+    // it has, hover is ignored - see the MouseArea in the delegate.
+    // Cleared in closePanel() with everything else, so each chooser
+    // starts out keyboard-only again.
+    property bool mouseArmed: false
+
+    // Hover moves the highlight, which the daemon owns - so this asks,
+    // exactly as the keys do, and lets the next poll bring the new
+    // highlightIndex back. Skipping the call when the row is already
+    // highlighted stops a pointer resting on one row from generating
+    // D-Bus traffic on every jitter event.
+    function hoverRow(index) {
+        if (!root.chooser || !root.mouseArmed)
+            return;
+
+        if (index === root.highlightIndex)
+            return;
+
+        root.highlightArg = String(index);
+        setHighlightCall.call();
+    }
+
+    // The KWin window's own icon, found the same way activateWindow()
+    // finds the window itself. Falls back to a generic theme name for a
+    // window that has gone away since the daemon built the list -
+    // Kirigami.Icon accepts either a QIcon or an icon name, so both
+    // forms are valid here.
+    function iconFor(windowId) {
+        const windows = KWinComponents.Workspace.stackingOrder;
+
+        for (let i = 0; i < windows.length; i++) {
+            if (windows[i].internalId.toString() === windowId)
+                return windows[i].icon;
+        }
+
+        return "application-x-executable";
+    }
 
     Timer {
         interval: 80
@@ -294,6 +405,7 @@ Window {
     // in place: `method` is a declared property and rewriting it per call
     // races against the in-flight call's own reply.
     property string chooserArg: ""
+    property string highlightArg: "0"
 
     function callChooser(call, arg) {
         if (arg !== null)
@@ -309,6 +421,20 @@ Window {
         dbusInterface: "com.backnav.Navigator"
         method: "MoveHighlight"
         arguments: [root.chooserArg]
+        onFinished: function(returnValue) {}
+    }
+
+    // The mouse's counterpart to moveCall: an absolute row rather than a
+    // direction. Sent as a string because every call shape proven to
+    // work from DBusCall here passes strings - see SetHighlight in
+    // navigator_service.py.
+    KWinComponents.DBusCall {
+        id: setHighlightCall
+        service: "com.backnav.Navigator"
+        path: "/com/backnav/Navigator"
+        dbusInterface: "com.backnav.Navigator"
+        method: "SetHighlight"
+        arguments: [root.highlightArg]
         onFinished: function(returnValue) {}
     }
 
@@ -376,6 +502,7 @@ Window {
         root.showing = false;
         root.chooser = false;
         root.hadFocus = false;
+        root.mouseArmed = false;
         root.contentKey = "";
         entries.clear();
         root.highlightIndex = -1;

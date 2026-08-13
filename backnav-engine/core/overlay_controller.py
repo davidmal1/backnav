@@ -502,6 +502,36 @@ class OverlayController:
         self._engine.abandon_walk()
         self._reset_gesture()
 
+    def set_highlight(self, index):
+        """
+        Put the highlight on an absolute row - what the mouse needs, since
+        the pointer names a row directly rather than a direction.
+
+        Implemented by STEPPING there rather than by assigning the walk
+        position, deliberately. walk_view() renders by walking with back(),
+        so the rows on screen are exactly the ones a real navigation can
+        land on; setting the walk position straight to a row index would
+        bypass the dead- and no-op-entry skipping that produced that list,
+        and could park the highlight on a row no keypress could reach.
+
+        A no-op when the highlight is not currently on screen - a walk
+        deeper than the panel shows reports -1, and there is no delta to
+        measure from that.
+        """
+        if not self._chooser:
+            return
+
+        entries, highlight = self._engine.walk_view(_MAX_PEEK_DEPTH)
+
+        if highlight < 0 or not 0 <= index < len(entries):
+            return
+
+        delta = index - highlight
+        direction = "back" if delta > 0 else "forward"
+
+        for _ in range(abs(delta)):
+            self._engine.step(direction)
+
     def cancel(self):
         """
         Escape in the chooser: back where you started, MRU order untouched.
@@ -564,6 +594,17 @@ class OverlayController:
             "chooser": self._chooser,
 
             "highlightIndex": highlight,
-            "entries": [{"app": item.app, "title": item.title} for item in entries],
+
+            # windowId rides along so the panel can find the KWin window
+            # and draw ITS icon. Deliberately not an icon name resolved
+            # here: matching a resource class to a .desktop file misses
+            # real apps (measured 2026-08-13 - "Claude" and "code" both
+            # resolve to nothing, and snap-packaged apps land on absolute
+            # PNG paths), whereas KWin has already done this work for
+            # every window it manages and is what the task manager draws.
+            "entries": [
+                {"app": item.app, "title": item.title, "windowId": item.window_id}
+                for item in entries
+            ],
             "activateWindowId": activate_window_id,
         })

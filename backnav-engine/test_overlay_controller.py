@@ -118,10 +118,10 @@ assert '"entries": []' in empty_state, empty_state
 fake_engine.walk_view.reset_mock()
 fake_engine.walk_view.return_value = (
     [
-        mock.Mock(app="org.kde.konsole", title="top"),
-        mock.Mock(app="org.kde.kate", title="one"),
-        mock.Mock(app="firefox", title="two"),
-        mock.Mock(app="org.kde.dolphin", title="three"),
+        mock.Mock(app="org.kde.konsole", title="top", window_id="10"),
+        mock.Mock(app="org.kde.kate", title="one", window_id="11"),
+        mock.Mock(app="firefox", title="two", window_id="12"),
+        mock.Mock(app="org.kde.dolphin", title="three", window_id="13"),
     ],
     2,
 )
@@ -130,6 +130,12 @@ fake_engine.walk_view.assert_called_once_with(_MAX_PEEK_DEPTH)
 assert '"active": true' in state and '"direction": "back"' in state, state
 assert '"highlightIndex": 2' in state, state
 assert '"top"' in state and '"three"' in state, state
+
+# windowId rides along per entry so the panel can find the KWin window and
+# draw its icon. A Mock would serialise fine as an attribute but not as
+# JSON, so this also pins that the field is a real string.
+assert '"windowId": "10"' in state, state
+assert '"windowId": "13"' in state, state
 
 # Repeats are the keyboard's auto-repeat (25-28/sec measured) and must
 # never accumulate into steps. This is the regression guard for the
@@ -185,6 +191,52 @@ fake_engine.step.reset_mock()
 controller.move_highlight("forward")
 fake_engine.step.assert_called_once_with("forward")
 
+# ---- The mouse names an absolute row, not a direction ----------------
+#
+# Hovering row N has to become "step from wherever the highlight is to
+# N", because the daemon owns the highlight and only knows how to move
+# it one entry at a time. Stepping rather than assigning the walk
+# position is deliberate - see OverlayController.set_highlight().
+
+# Four rows, highlight on row 2 (the fixture set above).
+fake_engine.step.reset_mock()
+controller.set_highlight(0)
+assert fake_engine.step.call_args_list == [mock.call("forward")] * 2, (
+    f"hovering two rows up should step forward twice: "
+    f"{fake_engine.step.call_args_list}"
+)
+
+fake_engine.step.reset_mock()
+controller.set_highlight(3)
+assert fake_engine.step.call_args_list == [mock.call("back")], (
+    f"hovering one row down should step back once: "
+    f"{fake_engine.step.call_args_list}"
+)
+
+# Hovering the row already highlighted is not a movement.
+fake_engine.step.reset_mock()
+controller.set_highlight(2)
+fake_engine.step.assert_not_called()
+
+# A row that does not exist is ignored rather than clamped. Clamping
+# would silently move the highlight somewhere the pointer was not, and
+# the panel and the daemon can legitimately disagree for one poll after
+# the list changes under a stationary cursor.
+for out_of_range in (-1, 4, 99):
+    fake_engine.step.reset_mock()
+    controller.set_highlight(out_of_range)
+    fake_engine.step.assert_not_called()
+
+# A highlight that is off-screen reports -1, and there is no delta to
+# measure from that - so hovering must do nothing rather than step
+# blindly.
+fake_engine.step.reset_mock()
+saved_walk_view = fake_engine.walk_view.return_value
+fake_engine.walk_view.return_value = (saved_walk_view[0], -1)
+controller.set_highlight(1)
+fake_engine.step.assert_not_called()
+fake_engine.walk_view.return_value = saved_walk_view
+
 # Enter commits: it raises where the highlight stands AND promotes it.
 # The entry has to be read BEFORE commit_walk(), which moves it to the
 # front - reading after would always raise whatever ended up at index 0.
@@ -213,6 +265,15 @@ fake_engine.commit_walk.assert_called_once_with()
 assert controller._chooser is False
 assert '"active": false' in controller.state_json()
 assert '"activateWindowId": "99"' not in controller.state_json(), "popped once only"
+
+# Hover with the chooser CLOSED must do nothing. The panel lingers on
+# screen for the dwell after a tap-driven walk, and the pointer may well
+# be sitting over it - so rows can be hovered at a moment when there is
+# no chooser to drive, and moving the walk then would rewrite history
+# behind a panel that is already on its way out.
+fake_engine.step.reset_mock()
+controller.set_highlight(1)
+fake_engine.step.assert_not_called()
 
 # Escape cancels: back where the gesture started, MRU order untouched.
 # It still has to RAISE that entry - nothing was raised while the chooser

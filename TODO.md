@@ -5,18 +5,18 @@ deliberately, until the whole thing is working.
 
 ## Overlay tidy-up
 
-Scope still to be set. Candidates noticed while working in
-`backnav-kwin-overlay/contents/ui/main.qml`, none of them decided:
+Done (2026-08-13), tested live: app icons in place of the resourceClass
+column, mouse hover and click, and everything scaled up behind a single
+`ui` multiplier in `main.qml`.
 
-- **Mouse selection.** Hover and click on rows do nothing. Pointer
-  events were confirmed to arrive during probing, so this is missing
-  wiring rather than a platform limitation. There is a comment in
-  `main.qml` marking the spot.
-- **The poll Timer.** It currently does double duty - heartbeat, and
-  sampling `root.active` to detect focus loss, because `onActiveChanged`
-  never fires with `false`. That is load-bearing and documented, but the
-  two jobs could be separated more clearly.
-- Row layout, sizing and the dimming of already-passed rows.
+Still only a candidate, not decided:
+
+- **The poll Timer.** It does double duty - heartbeat, and sampling
+  `root.active` to detect focus loss, because `onActiveChanged` never
+  fires with `false`. Load-bearing and documented, but the two jobs
+  could be separated more clearly.
+- Dimming of already-passed rows: the icon dims with the text now, which
+  has not been looked at properly at the larger size.
 
 ## Then
 

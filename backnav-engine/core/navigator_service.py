@@ -114,3 +114,23 @@ class NavigatorService(ServiceInterface):
     def DismissSelection(self) -> "s":
         self._overlay.dismiss()
         return "ok"
+
+    # The mouse's counterpart to MoveHighlight. The pointer names an
+    # absolute row rather than a direction, because "the row under the
+    # cursor" is not reachable by asking for "one further down".
+    # A STRING, not an "i", despite naming a number. Every call shape
+    # proven to work from KWinComponents.DBusCall in this project passes
+    # strings, and a QML number arriving as a QVariant double would fail
+    # to match an int32 signature - a failure mode with no diagnostic on
+    # the QML side at all (see the overlay README on logging). Not worth
+    # the risk for one int.
+    @method()
+    def SetHighlight(self, index: "s") -> "s":
+        try:
+            row = int(index)
+        except ValueError:
+            return "bad-index"
+
+        self._overlay.set_highlight(row)
+
+        return "ok"
