@@ -12,12 +12,10 @@ column, mouse hover and click, and everything scaled up behind a single
 Dimming of already-passed rows was checked at the larger size and is
 fine as it stands.
 
-Still only a candidate, not decided:
-
-- **The poll Timer.** It does double duty - heartbeat, and sampling
-  `root.active` to detect focus loss, because `onActiveChanged` never
-  fires with `false`. Load-bearing and documented, but the two jobs
-  could be separated more clearly.
+The poll Timer was split in two and tested live - the chooser still
+dismisses on click-away. `pollTimer` runs unconditionally and only asks
+the daemon what to draw; `focusWatch` runs `while root.chooser` and only
+samples `root.active`. Nothing left open in this section.
 
 ## Then
 
@@ -39,6 +37,26 @@ Still only a candidate, not decided:
   `dev/README.md`. Teardown is `dev/kwin-sandbox.sh stop` - **never**
   `pkill -f 'dev/sandbox_daemon\.py'`, which matches the invoking
   shell's own command line and kills it.
+
+  A lesson to write up while it is fresh (2026-08-13): **hot-loaded
+  overlay QML can outlive `unloadScript`.** Measured today - with
+  `backnav-overlay` reporting `isScriptLoaded false` and only the
+  `backnav` event producer left (which makes no D-Bus calls at all),
+  GetPeekState was still arriving at a full 80ms cadence from
+  `kwin_wayland` itself. An orphaned Window and its Timer, from some
+  earlier `loadDeclarativeScript`, with no script node left to unload
+  it by.
+
+  Two consequences. The "~37-38 GetPeekState in 3s = exactly one
+  instance" rule is only sound in a KWin that has been restarted since
+  the last hot-load; otherwise the baseline is 37 per orphan and the
+  count proves nothing. And orphans accumulate silently across a
+  session, so only a compositor restart clears them.
+
+  Also worth pinning down: `unloadScript` takes the **package id**, so
+  the event producer is `backnav` - one character away from the
+  project's own name, and unloading it stops focus tracking dead with
+  no error and no visible symptom until a navigation is attempted.
 
 - Kate's `openUrl` reopen bug: restoring a Kate tab can reopen a
   document rather than switch to it. Deferred by decision, not

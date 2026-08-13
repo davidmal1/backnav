@@ -174,8 +174,8 @@ Window {
 
     // There is deliberately no onActiveChanged handler here. It fires on
     // GAINING focus and has never once been observed firing with false,
-    // so focus loss is sampled in the poll Timer below instead - see the
-    // comment there.
+    // so focus loss is sampled in the focusWatch Timer below instead -
+    // see the comment there.
 
     ListView {
         id: listView
@@ -319,7 +319,7 @@ Window {
     // Whether the panel has actually held keyboard focus during THIS
     // chooser. Latched, and cleared with the chooser itself in
     // closePanel(), so "never got focus yet" cannot be mistaken for
-    // "lost focus" - see the poll Timer.
+    // "lost focus" - see the focusWatch Timer.
     property bool hadFocus: false
 
     // Whether the pointer has actually MOVED during this chooser. Until
@@ -360,22 +360,56 @@ Window {
         return "application-x-executable";
     }
 
+    // Asking the daemon what to draw, and nothing else.
+    //
+    // Unconditionally running, which matters beyond keeping the rows
+    // current: GetPeekState being called at all is the daemon's only
+    // proof that this panel still exists (see
+    // OverlayController._panel_is_gone - a KWin script reload or crash
+    // would otherwise leave the chooser wedged open forever). So this
+    // must not become conditional on anything being on screen.
     Timer {
+        id: pollTimer
         interval: 80
         running: true
         repeat: true
-        onTriggered: {
-            poll.call();
+        onTriggered: poll.call()
+    }
 
-            // root.active is SAMPLED here rather than watched via
-            // onActiveChanged, which has never once fired with false -
-            // the panel reports gaining focus and never losing it.
-            // Measured (2026-08-12): the signal is what is missing, not
-            // the state. The property itself goes false perfectly
-            // reliably, so polling sees the loss that the signal never
-            // announces.
-            if (root.chooser && root.active)
+    // Watching for the chooser losing keyboard focus. A separate timer
+    // from the poll above, because it is a different job with a
+    // different lifetime - `running` expresses that it exists only while
+    // the chooser does, which is also what keeps the two conditions
+    // below from having to re-state it on every line.
+    //
+    // SAMPLED rather than driven by onActiveChanged, which has never
+    // once been observed firing with false - the panel reports gaining
+    // focus and never losing it. Measured (2026-08-12): the signal is
+    // what is missing, not the state. The property itself goes false
+    // perfectly reliably.
+    //
+    // Which is also why this cannot be a binding, tempting as
+    // `chooser && hadFocus && !active` looks: QML re-evaluates a binding
+    // when the property's notify signal fires, and that signal is
+    // precisely what never arrives. Only reading the value on a tick
+    // sidesteps it.
+    Timer {
+        id: focusWatch
+        interval: 80
+        running: root.chooser
+        repeat: true
+        onTriggered: {
+            // Latched while focus is held, so "never got focus yet"
+            // cannot be mistaken for "lost focus" below.
+            // requestActivate() is asynchronous, so for the first tick or
+            // two after the chooser opens the panel legitimately has
+            // chooser=true and active=false - acting on that would
+            // dismiss the chooser roughly 80ms after it appeared, every
+            // single time.
+            if (root.active) {
                 root.hadFocus = true;
+                return;
+            }
 
             // Losing keyboard focus ends the chooser. KWin's own focus
             // stream cannot see this: the panel is not a managed window,
@@ -387,14 +421,7 @@ Window {
             //
             // Dismiss, not cancel: cancel RAISES the window you started
             // from, which would drag you off whatever you just clicked.
-            //
-            // Gated on having HELD focus first, not merely on not having
-            // it. requestActivate() is asynchronous, so for the first
-            // poll or two after the chooser opens the panel legitimately
-            // has chooser=true and active=false - acting on that would
-            // dismiss the chooser roughly 80ms after it appeared, every
-            // single time.
-            if (root.chooser && root.hadFocus && !root.active)
+            if (root.hadFocus)
                 root.callChooser(dismissCall, null);
         }
     }
@@ -456,7 +483,8 @@ Window {
         onFinished: function(returnValue) {}
     }
 
-    // Close the chooser without raising anything - see the poll Timer.
+    // Close the chooser without raising anything - see the focusWatch
+    // Timer.
     KWinComponents.DBusCall {
         id: dismissCall
         service: "com.backnav.Navigator"
