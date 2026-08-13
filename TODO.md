@@ -20,13 +20,28 @@ Still only a candidate, not decided:
 
 ## Then
 
-- `~/.config/backnavrc`, with `DwellMs` reloading live. Offered, never
-  started.
+- **Finalise the browser extensions - signed, and in the stores.**
+  Chrome Web Store for the chromium build (covers Brave and Vivaldi),
+  AMO for Firefox, ATN for Thunderbird. Right now all three are loaded
+  unpacked from this worktree, which is not just an install
+  inconvenience: an unpacked extension's id depends on the directory it
+  was loaded from, so moving or re-adding it mints a new `instanceId`.
+  That is exactly what caused the re-bind bug fixed in 660c952. Signed
+  and installed from a store, the id is stable and updates arrive on
+  their own.
+
+- `~/.config/backnavrc`, with `DwellMs` reloading live. The dwell that
+  ends a gesture is a hard-coded guess judged by feel; this makes it
+  adjustable without an edit-and-restart cycle.
+
 - Stale dev sandbox teardown, and writing the sandbox lessons into
   `dev/README.md`. Teardown is `dev/kwin-sandbox.sh stop` - **never**
   `pkill -f 'dev/sandbox_daemon\.py'`, which matches the invoking
   shell's own command line and kills it.
-- Kate's `openUrl` reopen bug. Deferred by decision, not forgotten.
+
+- Kate's `openUrl` reopen bug: restoring a Kate tab can reopen a
+  document rather than switch to it. Deferred by decision, not
+  forgotten.
 
 ## While dogfooding
 
