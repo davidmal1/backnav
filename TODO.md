@@ -9,14 +9,15 @@ Done (2026-08-13), tested live: app icons in place of the resourceClass
 column, mouse hover and click, and everything scaled up behind a single
 `ui` multiplier in `main.qml`.
 
+Dimming of already-passed rows was checked at the larger size and is
+fine as it stands.
+
 Still only a candidate, not decided:
 
 - **The poll Timer.** It does double duty - heartbeat, and sampling
   `root.active` to detect focus loss, because `onActiveChanged` never
   fires with `false`. Load-bearing and documented, but the two jobs
   could be separated more clearly.
-- Dimming of already-passed rows: the icon dims with the text now, which
-  has not been looked at properly at the larger size.
 
 ## Then
 
