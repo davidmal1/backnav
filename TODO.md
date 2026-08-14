@@ -31,6 +31,22 @@ samples `root.active`. Nothing left open in this section.
   and installed from a store, the id is stable and updates arrive on
   their own.
 
+  That churn is **chromium-only**, though - corrected 2026-08-14, having
+  been written here as if it applied to all three. Both Gecko builds pin
+  `browser_specific_settings.gecko.id`, so their extension id survives a
+  path change and their stored `instanceId` survives with it. Watched
+  live: Thunderbird kept `bb3815d6` across several reloads, while the
+  chromium build minted `76385c1e` the moment it was re-added from a new
+  directory.
+
+  Decided while fixing the Gecko keepalive (a2cb133): Thunderbird stays
+  on MV3 rather than dropping to MV2 with a persistent background page.
+  MV2 was the fallback if the event page could not be kept alive, and it
+  would have sidestepped Gecko's idle rules entirely - but the keepalive
+  works, so the fallback is not needed and MV2 would only have meant
+  submitting on a manifest version with no future. Recorded so it is not
+  re-argued at submission time.
+
 - `~/.config/backnavrc`, with `DwellMs` reloading live. The dwell that
   ends a gesture is a hard-coded guess judged by feel; this makes it
   adjustable without an edit-and-restart cycle.

@@ -87,16 +87,19 @@ function connect() {
 // worker open. The message carries no state; being traffic is the entire
 // point of it, and the daemon skips it explicitly.
 // The paragraph above is CHROME's rule, and this file does not run on
-// Chrome. Gecko appears to count extension-API activity rather than socket
-// traffic, which would make everything above true and yet insufficient
-// here - so the tick makes a browser.* call as well.
+// Chrome. Gecko counts extension-API activity rather than socket traffic,
+// which makes everything above true and yet insufficient here - so the tick
+// makes a chrome.* call as well.
 //
-// Suspected rather than confirmed on this build (2026-08-14). It was
-// diagnosed on thunderbird/background.js, whose page died at exactly 30s
-// with a 20s socket-only keepalive, and the same reasoning applies to this
-// file because it is the same engine and the same strategy. Not observed
-// directly here: Firefox is not in daily use on this machine, so this build
-// has never been watched long enough to see the 30s cycle at all.
+// Diagnosed on thunderbird/background.js, whose page died at exactly 30s
+// with a 20s socket-only keepalive, then confirmed on this build directly
+// (2026-08-14): 298s connected and untouched, against a 30s ceiling, in the
+// same window Thunderbird held 307s.
+//
+// This build is the better half of that evidence. Thunderbird had 3 tabs
+// and so almost no event traffic to keep its page alive by accident, while
+// this one had 17 - two very different event rates behaving identically,
+// which points at the mechanism rather than at circumstance.
 //
 // Note that getInstanceId() below is NOT a substitute. It hits
 // chrome.storage exactly once and returns a cached value forever after, so

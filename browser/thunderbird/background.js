@@ -156,22 +156,20 @@ function startKeepalive() {
     stopKeepalive();
 
     keepaliveTimer = setInterval(async () => {
-        // The extension-API call is INTENDED to be the part that holds the
-        // page open, with the WebSocket send doing a different job rather
-        // than duplicating it.
+        // The extension-API call is the part that holds the page open. The
+        // WebSocket send does a different job and is not redundant with it.
         //
-        // What is measured (2026-08-14): with the send alone, the page died
-        // at exactly 30s despite this interval running at 20s, producing a
-        // metronomic 30s-alive/30s-dead cycle in the daemon journal. That
-        // half is solid.
+        // Both halves measured 2026-08-14. With the send alone the page died
+        // at exactly 30s despite this interval running at 20s, giving a
+        // metronomic 30s-alive/30s-dead cycle in the daemon journal. With
+        // this call added it held 307s untouched, and firefox/background.js
+        // held 298s on the same change in the same window.
         //
-        // What is NOT yet confirmed is that this call fixes it. The
-        // connection did survive 151s afterwards, but the reload that would
-        // have loaded this code was never knowingly performed - and an event
-        // page also stays alive while it is receiving events, so ordinary
-        // use of Thunderbird explains that run just as well. A clean test
-        // needs a deliberate reload followed by leaving Thunderbird
-        // untouched for a few minutes.
+        // "Untouched" is load-bearing in that sentence. An event page also
+        // stays alive while it is RECEIVING events, so any use of the app
+        // during a test keeps it up regardless and proves nothing. An
+        // earlier run looked like a pass at 151s and had to be thrown out
+        // for exactly that reason.
         //
         // The strategy was ported from chromium/background.js, where the
         // comment is explicit that CHROME resets the service-worker idle
