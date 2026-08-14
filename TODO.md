@@ -1,7 +1,9 @@
 # Outstanding
 
-Working list for the `mru-navigation` branch. Not merged to `main` yet -
-deliberately, until the whole thing is working.
+Working list for BackNav. All of it lives on `main` now: the
+`mru-navigation` branch was merged in 54903f2 and retired, along with
+its worktree, so `/home/david/Projects/backnav` is the only checkout and
+the daemon, the KWin packages and the extensions all load from it.
 
 ## Overlay tidy-up
 
@@ -33,10 +35,19 @@ samples `root.active`. Nothing left open in this section.
   ends a gesture is a hard-coded guess judged by feel; this makes it
   adjustable without an edit-and-restart cycle.
 
-- Stale dev sandbox teardown, and writing the sandbox lessons into
-  `dev/README.md`. Teardown is `dev/kwin-sandbox.sh stop` - **never**
-  `pkill -f 'dev/sandbox_daemon\.py'`, which matches the invoking
-  shell's own command line and kills it.
+- Writing the sandbox lessons into `dev/README.md`. Teardown is
+  `dev/kwin-sandbox.sh stop` - **never** `pkill -f
+  'dev/sandbox_daemon\.py'`, which matches the invoking shell's own
+  command line and kills it.
+
+  The stale sandbox itself is gone (2026-08-14), and clearing it turned
+  up a gap worth documenting: **`stop` cannot reach anything started via
+  `exec`.** A `kwin-sandbox.sh exec` process gets no pidfile, so
+  `cmd_stop` checks daemon/fakenav/kwin/shell/launcher, finds them all
+  dead, and reports "sandbox is not running" while an orphan carries on.
+  One had been running since Aug 11 with its cwd on a since-deleted
+  worktree. Explicit pids are the only way out, which is the one case
+  where the `pkill -f` temptation is strongest and still wrong.
 
   A lesson to write up while it is fresh (2026-08-13): **hot-loaded
   overlay QML can outlive `unloadScript`.** Measured today - with
