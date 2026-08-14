@@ -19,7 +19,26 @@
 const WS_URL = "wss://127.0.0.1:8766";
 const RECONNECT_DELAY_MS = 2000;
 
+// Comfortably inside the ~30s idle timeout an MV3 event page gets, so a
+// keepalive always lands before the page can be suspended.
+//
+// This build went without one until 2026-08-14, having been left out when
+// the same fix landed for chromium and firefox. The symptom was a
+// connection that reconciled correctly and then simply stopped: measured
+// live at 31 seconds between "connected ... reports 3 live tabs" and
+// "disconnected" in the daemon journal.
+//
+// Worth knowing why the existing scheduleReconnect() below could not save
+// it, since on paper it should have. Suspension takes the page's timers
+// with it, so the very setTimeout meant to reconnect dies alongside the
+// thing it was going to revive. That is why the failure reads as silence
+// rather than as flapping, and why it appeared to recover "on its own"
+// whenever the user happened to touch Thunderbird - a tab event was the
+// only thing waking the page back up.
+const KEEPALIVE_MS = 20000;
+
 let socket = null;
+let keepaliveTimer = null;
 
 // A UUID generated once and persisted in extension storage, not tied to
 // the WebSocket connection itself - the daemon keys its `connections` map
@@ -111,7 +130,9 @@ function connect() {
 
     socket.addEventListener("open", reportLiveTabs);
     socket.addEventListener("open", reportActiveTab);
+    socket.addEventListener("open", startKeepalive);
     socket.addEventListener("message", handleServerMessage);
+    socket.addEventListener("close", stopKeepalive);
     socket.addEventListener("close", scheduleReconnect);
     socket.addEventListener("error", () => socket.close());
 }
@@ -119,6 +140,80 @@ function connect() {
 function scheduleReconnect() {
     setTimeout(connect, RECONNECT_DELAY_MS);
 }
+
+// Holds the event page open for as long as the socket is up.
+//
+// An open-but-silent WebSocket does not count as activity, so the page is
+// suspended out from under a perfectly healthy connection. Sending
+// something well inside the idle window is what actually keeps it alive.
+// The message carries no state - being traffic is the entire point of it,
+// and the daemon skips it explicitly (see websocket_server.py).
+//
+// send() already stamps instanceId onto everything it sends, so unlike the
+// chromium and firefox versions this does not need to await getInstanceId()
+// on every tick.
+function startKeepalive() {
+    stopKeepalive();
+
+    keepaliveTimer = setInterval(async () => {
+        // The extension-API call is INTENDED to be the part that holds the
+        // page open, with the WebSocket send doing a different job rather
+        // than duplicating it.
+        //
+        // What is measured (2026-08-14): with the send alone, the page died
+        // at exactly 30s despite this interval running at 20s, producing a
+        // metronomic 30s-alive/30s-dead cycle in the daemon journal. That
+        // half is solid.
+        //
+        // What is NOT yet confirmed is that this call fixes it. The
+        // connection did survive 151s afterwards, but the reload that would
+        // have loaded this code was never knowingly performed - and an event
+        // page also stays alive while it is receiving events, so ordinary
+        // use of Thunderbird explains that run just as well. A clean test
+        // needs a deliberate reload followed by leaving Thunderbird
+        // untouched for a few minutes.
+        //
+        // The strategy was ported from chromium/background.js, where the
+        // comment is explicit that CHROME resets the service-worker idle
+        // timer on WebSocket activity. Gecko does not appear to: its event
+        // page counts extension-API activity, and socket.send() is a DOM
+        // call, not a browser.* one. getPlatformInfo() is the cheapest
+        // browser.* call that needs no permission and has no side effects.
+        //
+        // The send stays because it is what the DAEMON sees - it is traffic
+        // on the socket, which is how a half-open connection gets noticed,
+        // and websocket_server.py already skips the event explicitly.
+        await browser.runtime.getPlatformInfo();
+
+        send({ event: "keepalive" });
+    }, KEEPALIVE_MS);
+}
+
+function stopKeepalive() {
+    if (keepaliveTimer !== null) {
+        clearInterval(keepaliveTimer);
+        keepaliveTimer = null;
+    }
+}
+
+// The backstop for the case the keepalive cannot cover: a page that has
+// ALREADY been suspended has no timers left to run, so neither the
+// keepalive nor scheduleReconnect() can bring it back. An alarm is the one
+// timer that outlives suspension - it wakes the page, which re-runs this
+// file top to bottom and reconnects on its own.
+//
+// periodInMinutes is clamped to a 30s floor, so a minute is the practical
+// worst-case reconnect delay.
+browser.alarms.create("backnav-reconnect", { periodInMinutes: 1 });
+
+browser.alarms.onAlarm.addListener(() => {
+    // If the alarm is what respawned the page, the bottom of this file has
+    // already reconnected. This covers the other case: the page is alive
+    // but its socket has closed.
+    if (!socket || socket.readyState === WebSocket.CLOSED) {
+        connect();
+    }
+});
 
 browser.tabs.onActivated.addListener(async ({ tabId }) => {
     try {

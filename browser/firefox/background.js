@@ -86,12 +86,32 @@ function connect() {
 // Sending something well inside that window is what actually holds the
 // worker open. The message carries no state; being traffic is the entire
 // point of it, and the daemon skips it explicitly.
+// The paragraph above is CHROME's rule, and this file does not run on
+// Chrome. Gecko appears to count extension-API activity rather than socket
+// traffic, which would make everything above true and yet insufficient
+// here - so the tick makes a browser.* call as well.
+//
+// Suspected rather than confirmed on this build (2026-08-14). It was
+// diagnosed on thunderbird/background.js, whose page died at exactly 30s
+// with a 20s socket-only keepalive, and the same reasoning applies to this
+// file because it is the same engine and the same strategy. Not observed
+// directly here: Firefox is not in daily use on this machine, so this build
+// has never been watched long enough to see the 30s cycle at all.
+//
+// Note that getInstanceId() below is NOT a substitute. It hits
+// chrome.storage exactly once and returns a cached value forever after, so
+// every tick past the first makes no extension-API call whatsoever - which
+// is precisely the shape of the bug.
 function startKeepalive() {
     stopKeepalive();
 
     keepaliveTimer = setInterval(async () => {
         if (!socket || socket.readyState !== WebSocket.OPEN)
             return;
+
+        // Cheapest chrome.* call that needs no permission and has no side
+        // effects. Being an API call is the entire point of it.
+        await chrome.runtime.getPlatformInfo();
 
         socket.send(JSON.stringify({
             event: "keepalive",
