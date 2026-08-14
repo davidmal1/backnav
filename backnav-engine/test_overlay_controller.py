@@ -2,7 +2,11 @@ import unittest.mock as mock
 
 from core.events.event_bus import EventBus
 from core.events.focus_changed import FocusChanged
-from core.overlay_controller import _MAX_PEEK_DEPTH, OverlayController
+from core.overlay_controller import (
+    _MAX_PEEK_DEPTH,
+    _OVERLAY_AFTER_PRESSES,
+    OverlayController,
+)
 
 # --- OverlayController's press/repeat/release state machine, tested
 # --- against a fake NavigationEngine (peek()/step()/commit_walk() stubbed)
@@ -521,19 +525,24 @@ focus_engine.abandon_walk.assert_not_called()
 loop.handles = []
 
 # ...but a TAP still steps. The removal above has to be specific to holds
-# and must not have quietly disabled navigation itself. Two taps here so
-# the panel is armed for the activateWindowId assertions below.
+# and must not have quietly disabled navigation itself.
+#
+# Tapped exactly _OVERLAY_AFTER_PRESSES times, derived rather than
+# written out, because these taps are only here to arm the panel for the
+# activateWindowId assertions below - the count is a means, not the
+# subject. Hard-coding it made this the one test that failed when the
+# threshold moved from 2 to 4, which is noise: nothing here is about how
+# many taps summon the panel.
 fake_item = mock.Mock(title="d", window_id="42", restore_type=None, restore_id=None)
 fake_engine.step.return_value = fake_item
 
 with mock.patch("core.overlay_controller.restore_item") as fake_restore:
-    controller._on_pressed("kwin", "BackNavBack", 0)
-    controller._on_released("kwin", "BackNavBack", 0)
-    controller._on_pressed("kwin", "BackNavBack", 0)
-    controller._on_released("kwin", "BackNavBack", 0)
+    for _ in range(_OVERLAY_AFTER_PRESSES):
+        controller._on_pressed("kwin", "BackNavBack", 0)
+        controller._on_released("kwin", "BackNavBack", 0)
 
-assert fake_engine.step.call_args_list == [mock.call("back"), mock.call("back")]
-assert fake_restore.call_args_list == [mock.call(fake_item), mock.call(fake_item)]
+assert fake_engine.step.call_args_list == [mock.call("back")] * _OVERLAY_AFTER_PRESSES
+assert fake_restore.call_args_list == [mock.call(fake_item)] * _OVERLAY_AFTER_PRESSES
 
 # A tap that follows a hold must be a real tap again - the held flag is
 # per press, not per gesture, so it cannot leak forward and mute later
@@ -583,23 +592,35 @@ fake_engine.commit_walk.reset_mock()
 loop.handles = []
 
 with mock.patch("core.overlay_controller.restore_item"):
+    # Every tap BEFORE the threshold leaves the screen alone - one
+    # completed tap is the bounce the hiding exists for, and raising the
+    # threshold only widens that window. Asserted on each of them rather
+    # than just the first, so a change that armed the panel one tap early
+    # is caught here rather than only being noticed in use.
+    for n in range(_OVERLAY_AFTER_PRESSES - 1):
+        controller._on_pressed("kwin", "BackNavForward", 0)
+        controller._on_released("kwin", "BackNavForward", 0)
+
+        assert '"active": false' in controller.state_json(), (
+            f"tap {n + 1} of {_OVERLAY_AFTER_PRESSES} showed the panel early"
+        )
+
     controller._on_pressed("kwin", "BackNavForward", 0)
-    controller._on_released("kwin", "BackNavForward", 0)
 
-    # One tap, landed, no hold - still nothing on screen. This is the
-    # gesture the hiding exists for.
-    assert '"active": false' in controller.state_json(), "one completed tap showed the panel"
-
-    controller._on_pressed("kwin", "BackNavForward", 0)
-
-    # The second press is the tell that this is a walk rather than a
+    # The threshold press is the tell that this is a walk rather than a
     # bounce, and the panel comes up as that tap BEGINS - so it is
-    # already on screen when the step lands, not after it.
-    assert '"active": true' in controller.state_json(), "second tap did not raise the panel"
+    # already on screen when the step lands, not after it. Asserted
+    # between the press and its release, which is the only window where
+    # that distinction is visible at all.
+    assert '"active": true' in controller.state_json(), (
+        f"tap {_OVERLAY_AFTER_PRESSES} did not raise the panel"
+    )
 
     controller._on_released("kwin", "BackNavForward", 0)
 
-assert fake_engine.step.call_args_list == [mock.call("forward"), mock.call("forward")]
+assert (
+    fake_engine.step.call_args_list == [mock.call("forward")] * _OVERLAY_AFTER_PRESSES
+)
 fake_engine.commit_walk.assert_not_called()
 assert len(loop.live) == 1, f"expected one live dwell, got {len(loop.live)}"
 

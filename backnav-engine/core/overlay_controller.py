@@ -43,9 +43,21 @@ _DWELL_SECONDS = 0.8
 # the gesture, it's whether the user is still driving it - so the two
 # triggers below are engagement, not wall-clock.
 #
-# Second press, i.e. the panel appears as the second tap begins rather
-# than when it lands, so it is already up when the step happens.
-_OVERLAY_AFTER_PRESSES = 2
+# The Nth press, i.e. the panel appears as that tap begins rather than
+# when it lands, so it is already up when the step happens.
+#
+# Was 2, on the reasoning that two taps is already a walk rather than a
+# bounce. True in the abstract, but wrong by feel (2026-08-13): a two-tap
+# walk is still over in a moment, and the panel arrives mid-gesture only
+# to linger ~1.5s afterwards describing a journey of two steps. Reported
+# as the panel appearing "no matter how fast I am" - which it does, and
+# always will, because this is a COUNT and not a race. No amount of speed
+# beats a counter.
+#
+# Nothing is lost by the delay: a tap walk raises the real window on every
+# step (see the mode table in __init__), so the panel is preview, not
+# function, and the windows themselves are the feedback until it shows.
+_OVERLAY_AFTER_PRESSES = 4
 
 # ...or the key being held, for which the trigger is simply the arrival of
 # the FIRST globalShortcutRepeated - deliberately with no threshold of our
