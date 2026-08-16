@@ -100,9 +100,11 @@ samples `root.active`. Nothing left open in this section.
   token at resolve time, when the document is provably open, and restores
   with it.
 
-  Still to confirm end to end: close a Kate tab, walk back onto it, and
-  check the file does not reappear. Every piece is verified in isolation
-  against a live Kate, but that specific sequence has not been run.
+  Confirmed end to end against a live Kate: a document was tokenised
+  while open, closed by hand, and `restore()` on its entry returned
+  success while changing nothing - no reopened tab, `windowFilePath`
+  still empty. Not a vacuous pass either, since `restore()` on the same
+  token while the document was still open did activate it.
 
   Optional follow-up, deliberately not done: Kate also emits
   `documentClosed(token)`, which would let closed documents be pruned
