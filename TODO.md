@@ -85,9 +85,32 @@ samples `root.active`. Nothing left open in this section.
   project's own name, and unloading it stops focus tracking dead with
   no error and no visible symptom until a navigation is attempted.
 
-- Kate's `openUrl` reopen bug: restoring a Kate tab can reopen a
-  document rather than switch to it. Deferred by decision, not
-  forgotten.
+- Kate's `openUrl` reopen bug is **fixed** (2026-08-14). `restore()` now
+  calls `activate(token)` - "switch to this document if it still exists"
+  - instead of `openUrl(path)`, which means "open this file" and did.
+
+  It never needed the `live_targets()` machinery the qpdfview fix used,
+  and the reason it was deferred turned out not to apply: confirming a
+  live open-documents query needed a running Kate, but no such query is
+  involved. Probing Kate's D-Bus surface settled three things - there is
+  genuinely no way to enumerate open documents; `tokenOpenUrl` on an
+  ALREADY-open path returns that document's existing token rather than
+  duplicating the tab, and does not raise Kate's window; and `activate()`
+  on a dead or invented token is a silent no-op. So the adapter mints a
+  token at resolve time, when the document is provably open, and restores
+  with it.
+
+  Still to confirm end to end: close a Kate tab, walk back onto it, and
+  check the file does not reappear. Every piece is verified in isolation
+  against a live Kate, but that specific sequence has not been run.
+
+  Optional follow-up, deliberately not done: Kate also emits
+  `documentClosed(token)`, which would let closed documents be pruned
+  from the chooser the way browser tabs are via `mark_tab_dead`, rather
+  than sitting there as dead rows that quietly do nothing. Not needed for
+  the bug - a stale entry is now inert rather than harmful - so it is a
+  separate improvement. Note it fires once per outstanding token, not
+  once per document, so any handler has to be idempotent.
 
 ## While dogfooding
 
