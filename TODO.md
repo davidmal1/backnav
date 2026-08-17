@@ -74,39 +74,19 @@ samples `root.active`. Nothing left open in this section.
   for the first auto-repeat - KGlobalAccel does deliver Released, so this
   is available, just not needed yet.
 
-- Writing the sandbox lessons into `dev/README.md`. Teardown is
-  `dev/kwin-sandbox.sh stop` - **never** `pkill -f
-  'dev/sandbox_daemon\.py'`, which matches the invoking shell's own
-  command line and kills it.
+- **Done (2026-08-17):** the sandbox lessons are written up, under
+  "Things that have actually gone wrong" in `dev/README.md` - the
+  `pkill -f` self-kill, `stop` being unable to see `exec`-started
+  processes, hot-loaded QML outliving `unloadScript`, and `unloadScript`
+  taking a package id where `backnav` is the event producer. They live
+  next to the tool now rather than in this file.
 
-  The stale sandbox itself is gone (2026-08-14), and clearing it turned
-  up a gap worth documenting: **`stop` cannot reach anything started via
-  `exec`.** A `kwin-sandbox.sh exec` process gets no pidfile, so
-  `cmd_stop` checks daemon/fakenav/kwin/shell/launcher, finds them all
-  dead, and reports "sandbox is not running" while an orphan carries on.
-  One had been running since Aug 11 with its cwd on a since-deleted
-  worktree. Explicit pids are the only way out, which is the one case
-  where the `pkill -f` temptation is strongest and still wrong.
-
-  A lesson to write up while it is fresh (2026-08-13): **hot-loaded
-  overlay QML can outlive `unloadScript`.** Measured today - with
-  `backnav-overlay` reporting `isScriptLoaded false` and only the
-  `backnav` event producer left (which makes no D-Bus calls at all),
-  GetPeekState was still arriving at a full 80ms cadence from
-  `kwin_wayland` itself. An orphaned Window and its Timer, from some
-  earlier `loadDeclarativeScript`, with no script node left to unload
-  it by.
-
-  Two consequences. The "~37-38 GetPeekState in 3s = exactly one
-  instance" rule is only sound in a KWin that has been restarted since
-  the last hot-load; otherwise the baseline is 37 per orphan and the
-  count proves nothing. And orphans accumulate silently across a
-  session, so only a compositor restart clears them.
-
-  Also worth pinning down: `unloadScript` takes the **package id**, so
-  the event producer is `backnav` - one character away from the
-  project's own name, and unloading it stops focus tracking dead with
-  no error and no visible symptom until a navigation is attempted.
+  Writing it up turned up one more, which is in there too: the
+  `Script1`, `Script2`... nodes under `/Scripting` are NOT a reliable
+  count of live scripts. Both packages reported `isScriptLoaded true`
+  with the overlay demonstrably running while introspection listed a
+  single node, having listed two earlier the same day. Ask about a
+  package by name.
 
 - Kate's `openUrl` reopen bug is **fixed** (2026-08-14). `restore()` now
   calls `activate(token)` - "switch to this document if it still exists"

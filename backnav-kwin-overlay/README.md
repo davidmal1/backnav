@@ -75,34 +75,62 @@ second.
 
 ## When the panel is allowed to appear
 
-Not on every gesture. The common gesture is a single tap to bounce to the
-previous window, and for that the panel is a distraction - the switch has
-already happened by the time it renders, and it then sits on screen for
-`_DWELL_SECONDS` plus the QML `dwell` linger below (~1.5s in total) to
-describe a journey of one step.
+On a **hold**, and only on a hold. There are two gestures and they do not
+overlap:
 
-So the daemon keeps reporting `active: false` until the gesture shows a
-sign of being a real walk: **a second press**, or **the key being held**
-(the first `globalShortcutRepeated`). Neither fires for tap-and-done.
-`activateWindowId` is still reported while inactive, which is what lets a
-hidden overlay still raise windows - so nothing about plain tap-to-switch
-changes.
+| gesture | what happens |
+| --- | --- |
+| tap, any number of times | walks back through the MRU list, raising the real window each step. No panel, ever. |
+| hold | the panel appears, and nothing moves until you choose. A hold does not navigate at all. |
+
+Tap to act, hold to look. The daemon reports `active: false` for the whole
+of a tap walk, while still reporting `activateWindowId` - which is what
+lets a hidden overlay raise windows, and so what makes tapping work with
+nothing drawn on screen.
+
+### Why there is no "panel after N taps"
+
+There was one until 2026-08-17, and the reasoning for it was sound: a long
+walk plausibly wants a list, so the panel appeared once the gesture proved
+itself. Tried at 2 presses, judged intrusive, raised to 4, then removed
+after use.
+
+What use showed is that no value of N is right. Any threshold splits one
+walk into a quiet phase and a loud one, with the mode change arriving
+partway through - and it can never be avoided by tapping faster, because a
+count is not a race. It was reported as the panel appearing "no matter how
+fast I am", which is exactly what a counter does.
+
+It was briefly a `backnavrc` setting before being deleted outright. A
+setting would only have preserved the behaviour behind a default, and the
+bar for a setting is "genuinely a matter of taste" rather than "we could
+not decide".
 
 A plain elapsed-time delay from the start of the gesture was the first
-design and does not work: the gesture stays open for the whole
-`_DWELL_SECONDS` after the last tap, so any threshold under 800ms is met
-by single taps too (showing the panel late, which is worse than showing
-it promptly) and any threshold over 800ms is never met because the walk
-has already committed. The dwell sandwiches it; there is no usable value.
+design of all, and could not work either: the gesture stays open for the
+whole dwell after the last tap, so any threshold under `DwellMs` is met by
+single taps too, and any threshold over it is never met because the walk
+has already committed. The dwell sandwiches it.
 
-The hold trigger deliberately has no threshold of its own on top of the
-first repeat. Auto-repeat does not start until the keyboard's repeat
-delay has elapsed - 600ms on this machine (`xset q`: "auto repeat delay:
-600, repeat rate: 25") - so a repeat existing at all already proves a
-deliberate hold. An earlier 250ms gate on top of that was unreachable
-code. It also means the peek delay follows System Settings > Keyboard
-rather than a BackNav setting, which is the right owner for "how long
-before holding a key means something".
+### The hold trigger
+
+Deliberately no threshold of its own on top of the first
+`globalShortcutRepeated`. Auto-repeat does not start until the keyboard's
+repeat delay has elapsed - 600ms on this machine (`xset q`: "auto repeat
+delay: 600, repeat rate: 25") - so a repeat existing at all already proves
+a deliberate hold. An earlier 250ms gate on top of that was unreachable
+code.
+
+It also means the delay follows System Settings > Keyboard rather than a
+BackNav setting, which is the right owner for "how long before holding a
+key means something".
+
+The cost, now that hold is the only route to the panel, is that it
+inherits that delay and so is not instant. If that becomes annoying the
+fix is to detect a hold as *pressed, with no `Released` within N ms*
+rather than waiting for auto-repeat - KGlobalAccel does deliver
+`globalShortcutReleased`, so this is available. Not done, because it has
+not been needed.
 
 ## How this QML learns what to show
 
