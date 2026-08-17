@@ -1,6 +1,7 @@
 import asyncio
 import json
 
+from core.config import CONFIG
 from core.events.focus_changed import FocusChanged
 from core.navigator_service import restore_item
 
@@ -16,68 +17,54 @@ _MAX_PEEK_DEPTH = 8
 # This is a stand-in for releasing Alt in a real Alt+Tab, which is not
 # available to us: KGlobalAccel never reports a modifier's release (see
 # the class docstring), so the end of a multi-tap gesture has to be
-# inferred from the user stopping. It is the single value worth tuning by
-# feel. Too short and a deliberate two-tap walk gets split into two
-# separate one-tap gestures, which just swaps back and forth; too long and
-# the ordinary bounce between two windows feels like it lags before it
-# settles. Not a measured optimum - 600ms was the first value hand-tested
-# and accepted, then raised to 800ms to give a two-tap walk more room.
-_DWELL_SECONDS = 0.8
+# inferred from the user stopping. Too short and a deliberate two-tap walk
+# gets split into two separate one-tap gestures, which just swaps back and
+# forth; too long and the ordinary bounce between two windows feels like it
+# lags before it settles.
+#
+# Now `DwellMs` in ~/.config/backnavrc rather than a constant here, because
+# it is judged by feel and there is no right answer to hard-code - see
+# core/config.py for the default and the reasoning behind it. Read fresh at
+# the point it is used, so an edit applies to the next gesture with nothing
+# to restart.
 
-# When the panel is allowed to appear at all.
+# When the panel is allowed to appear at all: on a HOLD, and only on a
+# hold. There are exactly two gestures, and they do not overlap.
 #
-# The common gesture is one tap to bounce to the previous window, and for
-# that the panel is pure distraction: the switch is already over by the
-# time it renders, and it then sits there for _DWELL_SECONDS plus the
-# QML's own linger (~1.5s total) describing a journey of one step. So it
-# stays hidden until the gesture gives some sign of actually being a walk.
+#   tap (any number of times) - walk back through the MRU list. Each tap
+#       raises the real window immediately, so you watch actual windows go
+#       past rather than a list describing them. No panel, ever.
 #
-# NOT a plain elapsed-time delay measured from the start of the gesture,
-# which is the obvious implementation and cannot work here. The gesture
-# stays open for the whole _DWELL_SECONDS after the last tap, so any
-# threshold below 800ms is met by every single-tap gesture too (it just
-# shows the panel late, which is worse than showing it promptly), and any
-# threshold above 800ms is never met at all because the walk has already
-# committed. There is no usable value between those two: the dwell
-# sandwiches it. What separates a bounce from a walk is not time spent in
-# the gesture, it's whether the user is still driving it - so the two
-# triggers below are engagement, not wall-clock.
+#   hold                      - the panel appears and nothing moves until
+#       you choose. See _on_released: a hold does not navigate at all.
 #
-# The Nth press, i.e. the panel appears as that tap begins rather than
-# when it lands, so it is already up when the step happens.
+# Tap to act, hold to look. Settled 2026-08-17 after use, replacing a
+# threshold that showed the panel on the Nth tap.
 #
-# Was 2, on the reasoning that two taps is already a walk rather than a
-# bounce. True in the abstract, but wrong by feel (2026-08-13): a two-tap
-# walk is still over in a moment, and the panel arrives mid-gesture only
-# to linger ~1.5s afterwards describing a journey of two steps. Reported
-# as the panel appearing "no matter how fast I am" - which it does, and
-# always will, because this is a COUNT and not a race. No amount of speed
-# beats a counter.
+# That threshold is worth describing because the reasoning for it was
+# sound and it was still wrong. A long walk does plausibly want a list, so
+# the panel appeared once a gesture "proved" itself - tried at 2 taps,
+# judged intrusive, raised to 4, then removed. What use showed is that
+# there is no correct N: any of them turns a walk into two modes, one
+# quiet and one not, with the change of mode landing mid-gesture. And it
+# could never be avoided by tapping quickly, because a count is not a race
+# - reported at the time as the panel appearing "no matter how fast I am".
 #
-# Nothing is lost by the delay: a tap walk raises the real window on every
-# step (see the mode table in __init__), so the panel is preview, not
-# function, and the windows themselves are the feedback until it shows.
-_OVERLAY_AFTER_PRESSES = 4
-
-# ...or the key being held, for which the trigger is simply the arrival of
-# the FIRST globalShortcutRepeated - deliberately with no threshold of our
-# own on top, which would be dead code. Auto-repeat does not begin until
-# the keyboard's repeat DELAY has elapsed (600ms on this machine: `xset q`
-# reports "auto repeat delay: 600, repeat rate: 25", the rate matching the
-# 25-28/sec measured earlier), so a repeat existing at all already proves
-# a hold far longer than any threshold worth setting. An earlier version
-# gated these on a 250ms hold and the condition was unreachable - the
-# first repeat is 600ms late by construction.
+# The trigger for the hold is simply the arrival of the FIRST
+# globalShortcutRepeated, with no threshold of our own on top, which would
+# be dead code. Auto-repeat does not begin until the keyboard's repeat
+# DELAY has elapsed (600ms on this machine: `xset q` reports "auto repeat
+# delay: 600, repeat rate: 25", the rate matching the 25-28/sec measured
+# earlier), so a repeat existing at all already proves a hold far longer
+# than any threshold worth setting. An earlier version gated these on a
+# 250ms hold and the condition was unreachable - the first repeat is 600ms
+# late by construction.
 #
-# Reusing the system delay is the better behaviour anyway, not just the
-# simpler one: "how long before holding a key means something" is a
-# preference the user already owns in System Settings > Keyboard, so a
-# fast repeat delay gets a correspondingly quick peek, and BackNav grows
-# no knob of its own for it.
-#
-# Raising the panel is the ONLY thing holding does - see _on_released, a
-# hold does not navigate at all. So the gesture reads exactly as "show me
-# the list", and nothing moves until you tap.
+# The cost of that, now that hold is the only route to the panel: it
+# inherits the system repeat delay, so the panel is not instant. Detecting
+# a hold sooner is possible - KGlobalAccel does deliver Released, so
+# "pressed, and no release within N ms" would work without waiting for
+# auto-repeat - but it has not been needed.
 
 # KWin's registerShortcut("BackNavBack", ...)/("BackNavForward", ...)
 # (see backnav-kwin/contents/code/main.js) register these two action
@@ -106,12 +93,12 @@ class OverlayController:
     short, promoting the landed entry on every tap would swap the top two
     entries back and forth and make the third entry unreachable.
 
-    The panel is not shown for every gesture. A one-tap bounce to the
-    previous window is the common case and does not need a list drawn for
-    it, so the overlay stays hidden until a second press or a held key
-    says this is a walk - see _OVERLAY_AFTER_PRESSES. Window raising is
-    unaffected either way, since activateWindowId is reported even while
-    the overlay is inactive.
+    The panel is shown for a HOLD and never for taps, however many of them
+    there are - tap to act, hold to look. Window raising is unaffected
+    either way, since activateWindowId is reported even while the overlay
+    is inactive, which is what lets a tap walk raise real windows with
+    nothing drawn on screen. See the header for why a "panel after N taps"
+    threshold was removed rather than tuned.
 
     The end of a gesture has to be inferred, because it cannot be
     observed. Measured on real keys (2026-08-10, nested sandbox, trace in
@@ -345,13 +332,20 @@ class OverlayController:
             self._engine.abandon_walk()
             self._reset_gesture()
 
-        # Counted across the whole gesture, not per direction: tapping the
-        # opposite way mid-walk is still the user driving the same walk,
-        # and is if anything a stronger sign they want to see the list.
+        # Deliberately does NOT arm the panel, no matter how many times you
+        # tap. Tapping is the "just move me back" gesture and holding is
+        # the "show me the list" gesture, and that separation is the whole
+        # model - see the class docstring.
+        #
+        # There was a threshold here until 2026-08-17: the panel appeared
+        # on the Nth tap, on the reasoning that a long walk is one you want
+        # to see. It was tried at 2, judged intrusive, raised to 4, and
+        # then dropped after use, because no value was right. The panel
+        # arriving partway through a walk is a mode change nobody asked
+        # for, and it cannot be outrun by tapping faster - a count is not
+        # a race. Nothing was lost by removing it: a tap raises the real
+        # window on every step, so the windows themselves are the feedback.
         self._presses += 1
-
-        if self._presses >= _OVERLAY_AFTER_PRESSES:
-            self._overlay_armed = True
 
         self._held = False
         self._direction = direction
@@ -375,9 +369,14 @@ class OverlayController:
         # they are the sole evidence available that a key is still
         # physically down. That drives two things: raising the panel, and
         # marking this press as a hold so its release does not step (see
-        # _on_released). The first repeat arms it with no threshold of our
-        # own on top - see the _OVERLAY_AFTER_PRESSES comment block for
-        # why any such threshold would be unreachable dead code.
+        # _on_released). This is now the ONLY thing that raises the panel.
+        #
+        # No threshold of our own on top, which would be unreachable dead
+        # code: auto-repeat does not begin until the keyboard's repeat
+        # DELAY has elapsed (600ms on this machine), so a repeat existing
+        # at all already proves a hold longer than any threshold worth
+        # setting. That the delay is the user's own System Settings
+        # preference is the reason the panel is not instant on hold.
         if _SHORTCUT_DIRECTIONS.get(shortcut_unique) is None:
             return
 
@@ -437,7 +436,11 @@ class OverlayController:
         if self._commit_handle is not None:
             self._commit_handle.cancel()
 
-        self._commit_handle = self._loop.call_later(_DWELL_SECONDS, self._commit)
+        # Read per gesture rather than cached at startup - that is what
+        # makes an edit to backnavrc take effect on the next tap.
+        self._commit_handle = self._loop.call_later(
+            CONFIG.dwell_seconds(), self._commit,
+        )
 
     def _reset_gesture(self):
         if self._commit_handle is not None:

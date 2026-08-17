@@ -47,9 +47,32 @@ samples `root.active`. Nothing left open in this section.
   submitting on a manifest version with no future. Recorded so it is not
   re-argued at submission time.
 
-- `~/.config/backnavrc`, with `DwellMs` reloading live. The dwell that
-  ends a gesture is a hard-coded guess judged by feel; this makes it
-  adjustable without an edit-and-restart cycle.
+- **Done (2026-08-17):** `~/.config/backnavrc`, with `DwellMs` reloading
+  live. No watcher and no reload signal - each read stats the file and
+  re-parses only if it changed, so an edit lands on the next gesture.
+  Bad input is reported once to the journal and ignored in favour of the
+  default; a typo costs a log line, not a working daemon. Copy
+  `backnavrc.example` to get a commented starting point.
+
+  `DwellMs` is the only setting, and the file is deliberately not a home
+  for every number that could be one. A setting is a promise to keep a
+  behaviour working and a question the user has to answer, so the bar is
+  "genuinely a matter of taste".
+
+  Which is what settled the panel question in the same sitting. The
+  overlay's "appear after N taps" threshold was briefly made configurable
+  here, then removed outright: **taps never show the panel now, holds
+  always do.** Tried at 2, judged intrusive, raised to 4, dropped after
+  use - no value was right, because any threshold splits a walk into a
+  quiet phase and a loud one with the change landing mid-gesture. Making
+  it a setting would have preserved a bad idea behind a default.
+
+  Consequence worth watching while dogfooding: hold is now the only route
+  to the panel, and it is gated on the system keyboard repeat delay
+  (600ms here), so it is not instant. If that grates, the fix is to detect
+  a hold from "pressed, and no Released within N ms" rather than waiting
+  for the first auto-repeat - KGlobalAccel does deliver Released, so this
+  is available, just not needed yet.
 
 - Writing the sandbox lessons into `dev/README.md`. Teardown is
   `dev/kwin-sandbox.sh stop` - **never** `pkill -f

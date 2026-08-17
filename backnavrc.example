@@ -1,0 +1,52 @@
+# BackNav configuration - copy to ~/.config/backnavrc
+#
+#   cp backnavrc.example ~/.config/backnavrc
+#
+# Every setting is commented out below and shows its default, so this file
+# as-is changes nothing. Uncomment what you want to differ.
+#
+# Changes take effect on the NEXT GESTURE. There is nothing to restart and
+# no signal to send - the daemon re-reads this file whenever it has
+# changed. Deleting the file reverts everything in it to the defaults.
+#
+# A bad value is reported once to the journal and then ignored in favour of
+# the default, so a typo here costs you a log line rather than a working
+# daemon:
+#
+#   journalctl --user -u backnav | grep backnavrc
+#
+# Keys are case-insensitive. Blank lines, '#' or ';' comments, and a
+# [BackNav] section header are all fine.
+
+
+# How long the gesture waits for another tap before deciding you have
+# finished, in milliseconds. Accepted range 100-5000.
+#
+# This stands in for releasing Alt in a real Alt+Tab, which BackNav cannot
+# see: KGlobalAccel never reports a modifier's release, so the end of a
+# multi-tap walk has to be inferred from you stopping.
+#
+# Too short and a deliberate two-tap walk splits into two separate one-tap
+# gestures, which just swaps back and forth between the same two windows.
+# Too long and the ordinary bounce feels like it lags before it settles.
+#
+#DwellMs = 800
+
+
+# There is deliberately no setting for when the switcher panel appears.
+#
+# Tap to act, hold to look: tapping walks back and never shows the panel
+# however many times you do it, and holding shows the panel and navigates
+# nothing until you choose. A tap raises the real window on every step, so
+# during a walk you are watching actual windows rather than a list of them.
+#
+# A "show the panel after N taps" threshold did exist, at 2 and then 4, and
+# was removed after use rather than made configurable. No value was right:
+# any of them splits a walk into a quiet phase and a loud one, with the
+# change landing partway through. Keeping it as a setting would only have
+# preserved that behind a default.
+#
+# How long you must hold is your system keyboard repeat delay, in System
+# Settings > Keyboard > Delay - BackNav reuses it rather than inventing a
+# second preference for the same thing, so shortening it there makes the
+# panel appear sooner here.

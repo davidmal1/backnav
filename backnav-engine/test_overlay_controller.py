@@ -1,12 +1,16 @@
+import os
 import unittest.mock as mock
 
-from core.events.event_bus import EventBus
-from core.events.focus_changed import FocusChanged
-from core.overlay_controller import (
-    _MAX_PEEK_DEPTH,
-    _OVERLAY_AFTER_PRESSES,
-    OverlayController,
-)
+# Before importing anything that reads it. Points the config at a path that
+# cannot exist, so the suite runs against the shipped defaults instead of
+# whatever ~/.config/backnavrc happens to say on this machine - otherwise
+# these tests would start passing or failing according to the developer's
+# own tuning, which is a horrible way to find out you changed a setting.
+os.environ["BACKNAV_CONFIG"] = "/nonexistent/backnavrc"
+
+from core.events.event_bus import EventBus  # noqa: E402
+from core.events.focus_changed import FocusChanged  # noqa: E402
+from core.overlay_controller import _MAX_PEEK_DEPTH, OverlayController  # noqa: E402
 
 # --- OverlayController's press/repeat/release state machine, tested
 # --- against a fake NavigationEngine (peek()/step()/commit_walk() stubbed)
@@ -527,22 +531,16 @@ loop.handles = []
 # ...but a TAP still steps. The removal above has to be specific to holds
 # and must not have quietly disabled navigation itself.
 #
-# Tapped exactly _OVERLAY_AFTER_PRESSES times, derived rather than
-# written out, because these taps are only here to arm the panel for the
-# activateWindowId assertions below - the count is a means, not the
-# subject. Hard-coding it made this the one test that failed when the
-# threshold moved from 2 to 4, which is noise: nothing here is about how
-# many taps summon the panel.
 fake_item = mock.Mock(title="d", window_id="42", restore_type=None, restore_id=None)
 fake_engine.step.return_value = fake_item
 
 with mock.patch("core.overlay_controller.restore_item") as fake_restore:
-    for _ in range(_OVERLAY_AFTER_PRESSES):
+    for _ in range(4):
         controller._on_pressed("kwin", "BackNavBack", 0)
         controller._on_released("kwin", "BackNavBack", 0)
 
-assert fake_engine.step.call_args_list == [mock.call("back")] * _OVERLAY_AFTER_PRESSES
-assert fake_restore.call_args_list == [mock.call(fake_item)] * _OVERLAY_AFTER_PRESSES
+assert fake_engine.step.call_args_list == [mock.call("back")] * 4
+assert fake_restore.call_args_list == [mock.call(fake_item)] * 4
 
 # A tap that follows a hold must be a real tap again - the held flag is
 # per press, not per gesture, so it cannot leak forward and mute later
@@ -556,23 +554,29 @@ assert controller._direction == "back", "overlay must stay up during the dwell"
 assert len(loop.live) == 1 and loop.live[0].delay > 0
 
 state_during_dwell = controller.state_json()
+
+# The window id still rides out even though the panel is not shown, and
+# that is exactly what makes a hidden overlay work: KWin raises the window
+# through this field, so were it withheld on an inactive report, tapping
+# would step the history and move nothing on screen.
 assert '"activateWindowId": "42"' in state_during_dwell, state_during_dwell
-assert '"active": true' in state_during_dwell, state_during_dwell
+
+# Four taps and still no panel. Taps never summon it however many there
+# are - see the header: tap to act, hold to look.
+assert '"active": false' in state_during_dwell, state_during_dwell
+assert controller._overlay_armed is False
 
 # activateWindowId is popped, not left in place - the next poll must not
 # report the same activation twice.
 assert '"activateWindowId": null' in controller.state_json()
 
-# The dwell expiring ends the gesture: the walk is promoted and the overlay
-# goes away.
+# The dwell expiring ends the gesture and promotes the walk.
 loop.fire()
 fake_engine.commit_walk.assert_called_once_with()
 assert controller._direction is None
 assert '"active": false' in controller.state_json()
 
-# ...and the panel is re-armed from scratch for the next gesture, so the
-# next single tap is silent again rather than inheriting this walk's
-# visibility.
+# ...and the gesture resets, so the next one starts from scratch.
 assert controller._overlay_armed is False and controller._presses == 0
 
 # Release with no matching in-progress press (e.g. a shortcut that was
@@ -591,36 +595,33 @@ fake_engine.step.reset_mock()
 fake_engine.commit_walk.reset_mock()
 loop.handles = []
 
+TAPS = 12
+
 with mock.patch("core.overlay_controller.restore_item"):
-    # Every tap BEFORE the threshold leaves the screen alone - one
-    # completed tap is the bounce the hiding exists for, and raising the
-    # threshold only widens that window. Asserted on each of them rather
-    # than just the first, so a change that armed the panel one tap early
-    # is caught here rather than only being noticed in use.
-    for n in range(_OVERLAY_AFTER_PRESSES - 1):
+    # No number of taps summons the panel. Asserted after EVERY tap, and
+    # both mid-press and after the release, because the arming that used
+    # to happen did so as a press began - so a threshold creeping back in
+    # would be visible in that window and nowhere else.
+    #
+    # Twelve is well past any threshold anyone would plausibly reintroduce
+    # (the two that shipped were 2 and 4), so this fails loudly rather
+    # than happening to run short of a new one.
+    for n in range(TAPS):
         controller._on_pressed("kwin", "BackNavForward", 0)
+
+        assert '"active": false' in controller.state_json(), (
+            f"tap {n + 1} showed the panel while the press was down"
+        )
+
         controller._on_released("kwin", "BackNavForward", 0)
 
         assert '"active": false' in controller.state_json(), (
-            f"tap {n + 1} of {_OVERLAY_AFTER_PRESSES} showed the panel early"
+            f"tap {n + 1} showed the panel"
         )
 
-    controller._on_pressed("kwin", "BackNavForward", 0)
-
-    # The threshold press is the tell that this is a walk rather than a
-    # bounce, and the panel comes up as that tap BEGINS - so it is
-    # already on screen when the step lands, not after it. Asserted
-    # between the press and its release, which is the only window where
-    # that distinction is visible at all.
-    assert '"active": true' in controller.state_json(), (
-        f"tap {_OVERLAY_AFTER_PRESSES} did not raise the panel"
-    )
-
-    controller._on_released("kwin", "BackNavForward", 0)
-
-assert (
-    fake_engine.step.call_args_list == [mock.call("forward")] * _OVERLAY_AFTER_PRESSES
-)
+# Every one of them still navigated - hiding the panel must not have cost
+# the walk itself.
+assert fake_engine.step.call_args_list == [mock.call("forward")] * TAPS
 fake_engine.commit_walk.assert_not_called()
 assert len(loop.live) == 1, f"expected one live dwell, got {len(loop.live)}"
 
@@ -642,5 +643,41 @@ with mock.patch("core.overlay_controller.restore_item"):
 assert fake_engine.step.call_args_list == [mock.call("back"), mock.call("forward")]
 fake_engine.commit_walk.assert_not_called()
 assert len(loop.live) == 1
+
+# ---- tap to act, hold to look ----------------------------------------
+#
+# The two gestures side by side in one controller, which is the clearest
+# statement of the model there is: the same key, the same session, and the
+# panel turns on for exactly one of them.
+#
+# Worth having even though the taps above already assert their half,
+# because what matters is the CONTRAST. A regression that armed on taps
+# would still leave "hold shows the panel" true, and a regression that
+# never armed at all would still leave "taps stay quiet" true; only the
+# pair catches both.
+
+gesture_engine = mock.Mock()
+gesture_engine.walk_view.return_value = ([], -1)
+gesture_engine.step.return_value = mock.Mock(
+    title="x", window_id="1", restore_type=None, restore_id=None,
+)
+
+gesture_controller = OverlayController(gesture_engine)
+gesture_controller._loop = FakeLoop()
+
+with mock.patch("core.overlay_controller.restore_item"):
+    for _ in range(10):
+        gesture_controller._on_pressed("kwin", "BackNavBack", 0)
+        gesture_controller._on_released("kwin", "BackNavBack", 0)
+
+assert gesture_controller._overlay_armed is False, "taps summoned the panel"
+assert '"active": false' in gesture_controller.state_json()
+
+# Then a hold, mid-gesture, with no reset in between - so this is the same
+# walk changing its mind rather than a fresh start.
+gesture_controller._on_repeated("kwin", "BackNavBack", 0)
+
+assert gesture_controller._overlay_armed is True, "a hold did not raise the panel"
+assert gesture_controller._chooser is True, "a hold must enter chooser mode"
 
 print("OverlayController OK")
