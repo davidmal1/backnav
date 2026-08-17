@@ -61,12 +61,38 @@ class FakeLoop:
         return handle
 
     @property
-    def live(self):
+    def _uncancelled(self):
         return [h for h in self.handles if not h.cancelled]
 
+    @property
+    def live(self):
+        """
+        Pending DWELLS, which is what every assertion here means by a live
+        timer.
+
+        Filtered by callback rather than just counting handles, because
+        two different timers now share this loop: the dwell that ends a
+        gesture, and the hold detector armed on every press. Counting both
+        together would make "no commit is scheduled" fail whenever a press
+        happened to still be down, which says nothing about commits.
+        """
+        return [h for h in self._uncancelled if h.callback.__name__ == "_commit"]
+
+    @property
+    def holds(self):
+        return [h for h in self._uncancelled if h.callback.__name__ == "_become_hold"]
+
     def fire(self):
+        """
+        Expire the dwell, and only the dwell.
+
+        Firing every pending handle would fire the hold detector too, so a
+        test that taps and then expires the gesture would silently be
+        testing a hold instead.
+        """
         for handle in self.live:
             handle.callback()
+
         self.handles = []
 
 
@@ -679,5 +705,99 @@ gesture_controller._on_repeated("kwin", "BackNavBack", 0)
 
 assert gesture_controller._overlay_armed is True, "a hold did not raise the panel"
 assert gesture_controller._chooser is True, "a hold must enter chooser mode"
+
+# ---- a hold is detected by the clock, not just by auto-repeat --------
+#
+# Everything above drives holds through _on_repeated, which is how they
+# were detected until 2026-08-17. That path cannot fire until the
+# keyboard's own repeat delay elapses - 600ms by default - and once
+# holding became the only way to summon the panel, inheriting that made it
+# sluggish. So a press now also starts a timer.
+#
+# The distinction these tests have to hold onto: a tap and a hold begin
+# IDENTICALLY. The only thing separating them is whether a release arrives
+# before the timer does.
+
+
+def held_setup():
+    engine = mock.Mock()
+    engine.walk_view.return_value = ([], -1)
+    engine.step.return_value = mock.Mock(
+        title="h", window_id="7", restore_type=None, restore_id=None,
+    )
+
+    made = OverlayController(engine)
+    made._loop = FakeLoop()
+
+    return made, engine
+
+
+# A press alone arms the timer, and has not yet decided anything.
+hold_controller, hold_engine = held_setup()
+hold_controller._on_pressed("kwin", "BackNavBack", 0)
+
+assert len(hold_controller._loop.holds) == 1, "a press did not arm the hold timer"
+assert hold_controller._overlay_armed is False, "a press alone raised the panel"
+
+# Letting go before it fires cancels it - this is a tap, and taps never
+# show the panel however long they took.
+hold_controller._on_released("kwin", "BackNavBack", 0)
+
+assert hold_controller._loop.holds == [], "the release did not cancel the hold timer"
+assert hold_controller._overlay_armed is False
+
+# Holding past the threshold is what raises it. Fired by hand rather than
+# by waiting, same as the dwell.
+hold_controller, hold_engine = held_setup()
+hold_controller._on_pressed("kwin", "BackNavBack", 0)
+hold_controller._loop.holds[0].callback()
+
+assert hold_controller._overlay_armed is True, "the hold timer did not raise the panel"
+assert hold_controller._chooser is True
+assert hold_controller._held is True, "a timed hold must mark the press as held"
+
+# ...and marking it held is what stops the release from stepping. Without
+# that, letting go of a hold would navigate, which is the "advancing 1
+# place is silly" behaviour that holds exist to avoid.
+hold_controller._on_released("kwin", "BackNavBack", 0)
+hold_engine.step.assert_not_called()
+
+# The repeat path still works and agrees with the timer. It is the backstop
+# for a machine whose repeat delay is SHORTER than HoldMs, where the repeat
+# is the earlier evidence - so it must not have been replaced.
+repeat_controller, _ = held_setup()
+repeat_controller._on_pressed("kwin", "BackNavBack", 0)
+repeat_controller._on_repeated("kwin", "BackNavBack", 0)
+
+assert repeat_controller._overlay_armed is True, "the repeat path stopped working"
+
+# Both firing in one press is normal, not an error: the timer goes at
+# 250ms and the first repeat lands at 600ms saying the same thing.
+repeat_controller._loop.holds and repeat_controller._loop.holds[0].callback()
+repeat_controller._on_repeated("kwin", "BackNavBack", 0)
+
+assert repeat_controller._overlay_armed is True and repeat_controller._chooser is True
+
+# A timer left pending by one gesture must not fire into the next. The
+# reset clears it, so a tap after an abandoned gesture stays a tap.
+stale_controller, _ = held_setup()
+stale_controller._on_pressed("kwin", "BackNavBack", 0)
+
+assert len(stale_controller._loop.holds) == 1
+
+stale_controller._reset_gesture()
+
+assert stale_controller._loop.holds == [], "a hold timer survived the gesture reset"
+
+# Repeated presses do not stack timers - only the newest press is pending,
+# so a burst of taps cannot leave a queue of them waiting to fire.
+burst_controller, _ = held_setup()
+
+for _ in range(5):
+    burst_controller._on_pressed("kwin", "BackNavBack", 0)
+
+assert len(burst_controller._loop.holds) == 1, (
+    f"presses stacked hold timers: {len(burst_controller._loop.holds)}"
+)
 
 print("OverlayController OK")

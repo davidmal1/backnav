@@ -214,6 +214,11 @@ class OverlayController:
         self._loop = None
         self._commit_handle = None
 
+        # Pending "has this press become a hold yet?" timer - see
+        # _arm_hold_timer. Cancelled by the release, so it only survives to
+        # fire while the key is genuinely still down.
+        self._hold_handle = None
+
         # When the overlay QML last polled state_json(). It polls every
         # 80ms while loaded, so this doubles as a liveness heartbeat for
         # the panel - see _panel_is_gone().
@@ -350,6 +355,12 @@ class OverlayController:
         self._held = False
         self._direction = direction
 
+        # Start the clock on "is this a hold?". _on_released cancels it, so
+        # it only ever fires if the key is still down - which is the whole
+        # definition, and is available a good deal sooner than waiting for
+        # the keyboard's auto-repeat to arrive. See _become_hold.
+        self._arm_hold_timer()
+
     def _on_repeated(self, component_unique, shortcut_unique, timestamp):
         # Deliberately does not NAVIGATE, and must stay that way.
         #
@@ -380,12 +391,52 @@ class OverlayController:
         if _SHORTCUT_DIRECTIONS.get(shortcut_unique) is None:
             return
 
+        self._become_hold()
+
+    def _arm_hold_timer(self):
+        self._cancel_hold_timer()
+
+        # No loop before attach() - the sync tests drive the handlers
+        # directly, and a gesture without a loop simply has no hold
+        # detection rather than blowing up.
+        if self._loop is None:
+            return
+
+        self._hold_handle = self._loop.call_later(
+            CONFIG.hold_seconds(), self._become_hold,
+        )
+
+    def _cancel_hold_timer(self):
+        if self._hold_handle is not None:
+            self._hold_handle.cancel()
+            self._hold_handle = None
+
+    def _become_hold(self):
+        """
+        This press is a hold: raise the panel and stop its release from
+        stepping.
+
+        Reached two ways, and idempotent because both can happen in one
+        press. The timer above fires first on a default system; the first
+        auto-repeat then arrives later and says the same thing. Keeping the
+        repeat path is not redundancy for its own sake - it is the backstop
+        for a machine whose repeat delay is SHORTER than HoldMs, where the
+        repeat is the earlier evidence.
+        """
+        self._hold_handle = None
+
         self._held = True
         self._overlay_armed = True
         self._chooser = True
 
     def _on_released(self, component_unique, shortcut_unique, timestamp):
         direction = _SHORTCUT_DIRECTIONS.get(shortcut_unique)
+
+        # Cancelled before the direction guard below returns, and
+        # unconditionally: a pending timer belongs to a press that is now
+        # over whichever shortcut this release names, and letting it
+        # survive would turn a finished tap into a hold a moment later.
+        self._cancel_hold_timer()
 
         if direction is None or direction != self._direction:
             return
@@ -446,6 +497,10 @@ class OverlayController:
         if self._commit_handle is not None:
             self._commit_handle.cancel()
             self._commit_handle = None
+
+        # Or a hold timer left over from the gesture just ended would fire
+        # into the next one and open a chooser nobody asked for.
+        self._cancel_hold_timer()
 
         self._direction = None
         self._presses = 0

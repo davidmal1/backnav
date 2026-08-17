@@ -42,6 +42,21 @@ import os
 # walk more room.
 DEFAULT_DWELL_MS = 800
 
+# How long the shortcut must be held, with no release, before it counts as
+# a hold and raises the panel.
+#
+# 250ms because a deliberate hold is unambiguous by then while a tap is
+# long gone - key-down times for ordinary typing sit well under 150ms.
+#
+# This exists because the alternative was worse. The hold used to be
+# detected from the first auto-repeat, which cannot arrive until the
+# keyboard's own repeat DELAY has elapsed - 600ms by default - and once
+# holding became the ONLY way to summon the panel, inheriting that made it
+# feel sluggish. Repeats are still honoured as a backstop, so a system with
+# a repeat delay shorter than this still shows the panel at that point
+# instead.
+DEFAULT_HOLD_MS = 250
+
 # Bounds, not preferences. A dwell under ~100ms cannot survive the gap
 # between two deliberate taps, so the gesture would fragment into
 # single-tap walks; over 5s the panel outstays any plausible gesture and
@@ -50,6 +65,13 @@ DEFAULT_DWELL_MS = 800
 # intention, so they are refused rather than honoured.
 _DWELL_MS_MIN = 100
 _DWELL_MS_MAX = 5000
+
+# Below ~50ms an ordinary tap would register as a hold, which would put the
+# panel on screen for every single navigation. The upper bound is the point
+# past which auto-repeat has already arrived on a default system and the
+# setting has stopped doing anything.
+_HOLD_MS_MIN = 50
+_HOLD_MS_MAX = 2000
 
 _ENV_PATH = "BACKNAV_CONFIG"
 
@@ -87,6 +109,19 @@ class Config:
                 f"using {DEFAULT_DWELL_MS}",
             )
             ms = DEFAULT_DWELL_MS
+
+        return ms / 1000.0
+
+    def hold_seconds(self):
+        ms = self._int("holdms", DEFAULT_HOLD_MS)
+
+        if not _HOLD_MS_MIN <= ms <= _HOLD_MS_MAX:
+            self._complain(
+                "holdms",
+                f"HoldMs={ms} outside {_HOLD_MS_MIN}-{_HOLD_MS_MAX}, "
+                f"using {DEFAULT_HOLD_MS}",
+            )
+            ms = DEFAULT_HOLD_MS
 
         return ms / 1000.0
 

@@ -21,7 +21,13 @@ from contextlib import redirect_stdout
 
 os.environ["BACKNAV_CONFIG"] = "/nonexistent/backnavrc"
 
-from core.config import CONFIG, DEFAULT_DWELL_MS, Config, config_path  # noqa: E402
+from core.config import (  # noqa: E402
+    CONFIG,
+    DEFAULT_DWELL_MS,
+    DEFAULT_HOLD_MS,
+    Config,
+    config_path,
+)
 
 DEFAULT_DWELL_SECONDS = DEFAULT_DWELL_MS / 1000.0
 
@@ -137,6 +143,33 @@ assert "no '='" in noise, noise
 write("DwellMs = 1100\nSomeFutureSetting = yes\n")
 config = using_file()
 assert config.dwell_seconds() == 1.1
+
+# ---- HoldMs, validated the same way ----------------------------------
+
+write("HoldMs = 400\n")
+config = using_file()
+assert config.hold_seconds() == 0.4
+
+# Its own bounds, not the dwell's - a 100ms hold is perfectly sensible
+# where a 100ms dwell is the floor, so the two cannot share a range.
+write("HoldMs = 10\n")
+config = using_file()
+
+value, noise = quietly(config.hold_seconds)
+assert value == DEFAULT_HOLD_MS / 1000.0
+assert "HoldMs" in noise and "outside" in noise, noise
+
+write("HoldMs = 99999\n")
+config = using_file()
+assert quietly(config.hold_seconds)[0] == DEFAULT_HOLD_MS / 1000.0
+
+# The two settings are independent: a bad one must not poison the good one
+# sitting next to it in the same file.
+write("DwellMs = 1300\nHoldMs = nonsense\n")
+config = using_file()
+
+assert config.dwell_seconds() == 1.3
+assert quietly(config.hold_seconds)[0] == DEFAULT_HOLD_MS / 1000.0
 
 # ---- a bad value must not flood the journal --------------------------
 

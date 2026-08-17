@@ -33,7 +33,22 @@
 #DwellMs = 800
 
 
-# There is deliberately no setting for when the switcher panel appears.
+# How long you must hold the shortcut, with no release, before the panel
+# appears, in milliseconds. Accepted range 50-2000.
+#
+# Lower it if summoning the panel feels sluggish; raise it if an ordinary
+# tap sometimes flashes the panel at you. Below ~50ms a normal tap would
+# register as a hold, which is why that is the floor.
+#
+# Auto-repeat is still honoured as a backstop, so if your system keyboard
+# repeat delay is shorter than this, the panel appears at that point
+# instead.
+#
+#HoldMs = 250
+
+
+# There is deliberately no setting for when the switcher panel appears on
+# TAPS.
 #
 # Tap to act, hold to look: tapping walks back and never shows the panel
 # however many times you do it, and holding shows the panel and navigates

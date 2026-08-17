@@ -67,12 +67,13 @@ samples `root.active`. Nothing left open in this section.
   quiet phase and a loud one with the change landing mid-gesture. Making
   it a setting would have preserved a bad idea behind a default.
 
-  Consequence worth watching while dogfooding: hold is now the only route
-  to the panel, and it is gated on the system keyboard repeat delay
-  (600ms here), so it is not instant. If that grates, the fix is to detect
-  a hold from "pressed, and no Released within N ms" rather than waiting
-  for the first auto-repeat - KGlobalAccel does deliver Released, so this
-  is available, just not needed yet.
+  Hold being the only route to the panel meant it inherited the system
+  keyboard repeat delay (600ms here) and felt sluggish. **Fixed the same
+  day:** a press starts a `HoldMs` timer (default 250ms) which the release
+  cancels, so a hold is detected by the clock rather than by waiting for
+  auto-repeat. Repeats are kept as a backstop, for a machine whose repeat
+  delay is shorter than `HoldMs`. `HoldMs` is the second backnavrc
+  setting.
 
 - **Done (2026-08-17):** the sandbox lessons are written up, under
   "Things that have actually gone wrong" in `dev/README.md` - the
@@ -109,13 +110,19 @@ samples `root.active`. Nothing left open in this section.
   still empty. Not a vacuous pass either, since `restore()` on the same
   token while the document was still open did activate it.
 
-  Optional follow-up, deliberately not done: Kate also emits
-  `documentClosed(token)`, which would let closed documents be pruned
-  from the chooser the way browser tabs are via `mark_tab_dead`, rather
-  than sitting there as dead rows that quietly do nothing. Not needed for
-  the bug - a stale entry is now inert rather than harmful - so it is a
-  separate improvement. Note it fires once per outstanding token, not
-  once per document, so any handler has to be idempotent.
+  **Also done (2026-08-17):** closed Kate documents are now pruned from
+  the switcher rather than left as inert rows, via Kate's
+  `documentClosed(token)` signal - `core/kate_watcher.py`. Left as a row
+  they were not harmless after all: selecting one still raised the Kate
+  *window*, landing you in Kate on whatever document happened to be
+  current instead of the one you picked.
+
+  One match rule covers every Kate process rather than a subscription per
+  pid - the token identifies the document by itself, so the sender does
+  not matter, which avoids both per-pid lifecycle and starting async
+  subscriptions from the KWin monitor thread. The adapter's token cache
+  doubles as `live_targets()`, so the engine's existing skip loop does the
+  work with no new engine code. Confirmed end to end against a live Kate.
 
 ## While dogfooding
 

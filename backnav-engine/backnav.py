@@ -4,6 +4,7 @@ import threading
 from dbus_next.aio import MessageBus
 
 from core.events.event_bus import EventBus
+from core.kate_watcher import attach as attach_kate_watcher
 from core.kwin_monitor import KWinMonitor
 from core.navigation_engine import NavigationEngine
 from core.navigator_service import OBJECT_PATH, SERVICE_NAME, NavigatorService
@@ -39,6 +40,13 @@ async def main():
     # polling with no `active` change at all.
     overlay = OverlayController(engine, event_bus)
     await overlay.attach(dbus_bus)
+
+    # Kate is the one adapter-tracked app that can tell us a document has
+    # closed, via a signal rather than a query - it has no way to enumerate
+    # what is open (see adapters/kate.py). Without this, closed Kate
+    # documents linger in the switcher: harmless to select, but they raise
+    # the Kate window and land you on the wrong document.
+    await attach_kate_watcher(dbus_bus)
 
     dbus_bus.export(OBJECT_PATH, NavigatorService(engine, overlay))
     await dbus_bus.request_name(SERVICE_NAME)

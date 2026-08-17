@@ -96,6 +96,55 @@ class KateAdapter:
 
         return f"kate:{pid}:{path}"
 
+    def live_targets(self):
+        """
+        The documents believed to be open, for NavigationEngine's skip loop.
+
+        Kate cannot be asked this - there is no enumeration call, which is
+        the whole reason resolve mints tokens in the first place. So the
+        token cache IS the answer: an entry is in it because the document
+        was open when it was resolved, and it leaves when Kate says the
+        document closed (see forget_token, driven by core/kate_watcher.py).
+
+        Unlike qpdfview's version this never returns None. There is no "the
+        query failed" case to signal, because there is no query.
+
+        An entry with no token reads as dead here, which is right rather
+        than incidental: restore() cannot do anything without one, so
+        skipping past it beats landing on it.
+        """
+        return set(self._tokens)
+
+    def target_of(self, restore_id: str):
+        _, pid, path = restore_id.split(":", 2)
+
+        return (int(pid), path)
+
+    def forget_token(self, token: str) -> bool:
+        """
+        Kate has closed the document this token named.
+
+        Searched by value because the signal carries only the token, not
+        the path. The cache is small - one entry per document per Kate
+        process - so a scan costs nothing worth indexing around.
+
+        Copied before iterating: this runs on the daemon's event loop while
+        resolve_restore_id runs on the KWin monitor thread, and iterating a
+        dict another thread is inserting into raises.
+
+        Deliberately NOT recording the token as dead. A restore_id names a
+        file path, so reopening the file by hand yields the identical id,
+        and "once dead, always dead" would skip the reopened document
+        forever. Forgetting is enough: the next resolve mints a fresh token
+        and the entry is live again.
+        """
+        for key, cached in list(self._tokens.items()):
+            if cached == token:
+                self._tokens.pop(key, None)
+                return True
+
+        return False
+
     def restore(self, restore_id: str) -> bool:
         _, pid, path = restore_id.split(":", 2)
 
