@@ -124,6 +124,47 @@ samples `root.active`. Nothing left open in this section.
   doubles as `live_targets()`, so the engine's existing skip loop does the
   work with no new engine code. Confirmed end to end against a live Kate.
 
+## Known, diagnosed, not yet fixed
+
+- **A duplicate row for a tabbed app, which vanishes once you select it.**
+  Reported 2026-08-17: two Thunderbird rows in the chooser, one selected,
+  and on the next hold the other had gone. Nothing is lost - the row that
+  vanished pointed at the same window - but it reads alarmingly, and the
+  natural reading ("I must have two windows open") is wrong.
+
+  Reproduced, so this is understood rather than suspected. There are two
+  entries because there really are two: a `browser_tab` entry, and a plain
+  window-level fallback with `restore_type=None` for the same window. The
+  fallback is written when the window gains focus BEFORE the extension has
+  reported a tab for it - which is the daemon-restart race, and matches the
+  incident exactly (daemon up at 14:49:21, Thunderbird connected at
+  14:49:22).
+
+  It then vanishes because `_is_noop_window_entry` hides a plain fallback
+  only when we hold better information for that window AND it is the
+  window that currently has focus. Selecting Thunderbird satisfies the
+  second condition, so the duplicate hides itself the moment you act on
+  it. Reproduction:
+
+  ```
+  focus other -> focus TB (no tab yet) -> tab event for TB -> focus other
+      = two TB rows
+  focus TB
+      = one TB row
+  ```
+
+  The obvious fix - dropping the `window_id != _current_window_id` clause
+  so the fallback is always hidden when better info exists - is **wrong**,
+  and the suite says so: `test_navigation_engine` and `test_lost_tab_close`
+  both lose a real, reachable entry ("New Tab", "Brave"). Where no tab
+  entry exists for that window the fallback is the only representation of
+  it, and swallowing it is worse than showing a duplicate.
+
+  The narrower fix is to supersede at INSERT time rather than filter at
+  walk time: when a tab entry arrives for a window, retire any earlier
+  plain window-level entry for that same window, since it can only be a
+  degraded duplicate of what just arrived. Untried.
+
 ## While dogfooding
 
 Three tab-tracking fixes landed together in 660c952 and want real use
