@@ -47,6 +47,12 @@ DEFAULT_DWELL_MS = 800
 #
 # 250ms because a deliberate hold is unambiguous by then while a tap is
 # long gone - key-down times for ordinary typing sit well under 150ms.
+# That was the reasoning; the value was then used and accepted on
+# 2026-08-17 ("hold feels faster.. perfectly fine"), so it is a tried
+# number rather than only an argued one. No search for an optimum was
+# made, and none is claimed - if it is ever wrong it will be wrong in an
+# obvious direction, either sluggish or flashing the panel at ordinary
+# taps, and HoldMs is the dial.
 #
 # This exists because the alternative was worse. The hold used to be
 # detected from the first auto-repeat, which cannot arrive until the
