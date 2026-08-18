@@ -26,8 +26,8 @@ pins one:
 | build | pinned by | id |
 | --- | --- | --- |
 | `chromium/` | `key` in the manifest | `fniehifalbhemldjkglbkbdigjpdimhh` |
-| `firefox/` | `browser_specific_settings.gecko.id` | `backnav@local` |
-| `thunderbird/` | `browser_specific_settings.gecko.id` | `backnav@localhost` |
+| `firefox/` | `browser_specific_settings.gecko.id` | `backnav@davidmal1.github.io` |
+| `thunderbird/` | `browser_specific_settings.gecko.id` | `backnav@davidmal1.github.io` |
 
 This used to be the main argument for hurrying to the store: an unpacked
 chromium extension took its id from the directory it was loaded from, so
@@ -93,9 +93,24 @@ These are gaps in this repo, not in the process.
   regardless of which build changed, so a single number always describes
   the whole set.
 
-- **`backnav@local` is a placeholder id** for the Firefox build. It works,
-  but a domain you control reads better on a public listing, and the id
-  cannot be changed later without it counting as a different add-on.
+- ~~**`backnav@local` is a placeholder id.**~~ **Settled 2026-08-18:**
+  both Gecko builds now use `backnav@davidmal1.github.io`.
+
+  Domain-shaped because that is the format - the id is email-shaped or a
+  GUID, so a repository URL cannot be used directly. `davidmal1.github.io`
+  is the Pages domain GitHub reserves for that account, so it is provably
+  ours and cannot collide in AMO's global id namespace, which is what the
+  old `backnav@local` could not promise.
+
+  **Both builds deliberately share one id.** AMO and ATN are separate
+  registries and Firefox and Thunderbird are separate applications with
+  separate profiles, so there is no collision: one id names "the BackNav
+  extension" across both. The alternative - suffixing the Thunderbird
+  one - would read as two products, which they are not.
+
+  Changeable only until the first upload to either store. After that the
+  id is permanent: a different one is a different add-on, so existing
+  users get no update, and reviews and install counts start again.
 
 ## The routes, including the short ones
 
@@ -123,7 +138,7 @@ that does not.
 
 1. ~~Icons.~~ Done - see above.
 2. ~~Narrow the permissions.~~ Done - removed entirely, see above.
-3. ~~Align versions.~~ Done. Still to decide: a real Firefox id.
+3. ~~Align versions, and decide a real Firefox id.~~ Done.
 4. Thunderbird first, via whichever ATN route works - it has the most to
    gain, being the only build that does not currently survive a restart.
 5. Chromium last. It is the fiddliest (account, fee, review, and the
