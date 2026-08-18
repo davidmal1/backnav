@@ -24,14 +24,14 @@ event_bus.publish(FocusChanged(app="thunderbird", window_id="2", title="New wind
 # 2: the extension reports the mail tab itself.
 event_bus.publish(BrowserTabChanged(
     browser="thunderbird", connection_id="tb-instance-1", window_id=1, tab_id=1,
-    title="Inbox - Unified Folders", url="",
+    title="Inbox - Unified Folders",
 ))
 assert engine.current.restore_id == "thunderbird:tb-instance-1:1"
 
 # 3: a message opened in its own tab.
 event_bus.publish(BrowserTabChanged(
     browser="thunderbird", connection_id="tb-instance-1", window_id=1, tab_id=2,
-    title="Re: quarterly report", url="",
+    title="Re: quarterly report",
 ))
 assert engine.current.title == "Re: quarterly report"
 

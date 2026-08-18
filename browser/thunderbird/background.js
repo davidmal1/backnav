@@ -79,7 +79,6 @@ function reportTab(tab) {
         windowId: tab.windowId,
         id: tab.id,
         title: tab.title || "",
-        url: tab.url || "",
     });
 }
 

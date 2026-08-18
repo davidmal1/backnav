@@ -19,7 +19,7 @@ event_bus.publish(FocusChanged(app="org.kde.konsole", window_id="1", title="Kons
 event_bus.publish(FocusChanged(app="brave-browser", window_id="2", title="Some Tab"))
 
 # 2: now a real tab shows up for that same window.
-event_bus.publish(BrowserTabChanged(browser="chromium", connection_id="conn-1", window_id=99, tab_id=1, title="Real Tab", url="https://example.com"))
+event_bus.publish(BrowserTabChanged(browser="chromium", connection_id="conn-1", window_id=99, tab_id=1, title="Real Tab"))
 
 assert engine.current.title == "Real Tab"
 

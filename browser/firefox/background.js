@@ -148,7 +148,6 @@ async function publish(tab) {
         id: tab.id,
         windowId: tab.windowId,
         title: tab.title,
-        url: tab.url
     }));
 }
 

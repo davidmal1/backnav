@@ -32,7 +32,7 @@ engine = NavigationEngine(event_bus)
 event_bus.publish(FocusChanged(app="brave-browser", window_id="10", title="Brave"))
 event_bus.publish(BrowserTabChanged(
     browser="chromium", connection_id="brave-1", window_id=1, tab_id=5,
-    title="SnakeoilOS", url="http://snakeoil",
+    title="SnakeoilOS",
 ))
 assert engine.current.app == "brave-browser"
 assert engine.current.title == "SnakeoilOS"
@@ -41,7 +41,7 @@ assert engine.current.title == "SnakeoilOS"
 event_bus.publish(FocusChanged(app="thunderbird", window_id="20", title="Inbox"))
 event_bus.publish(BrowserTabChanged(
     browser="thunderbird", connection_id="tb-1", window_id=1, tab_id=1,
-    title="Inbox - Unified Folders", url="",
+    title="Inbox - Unified Folders",
 ))
 assert engine.current.app == "thunderbird"
 
@@ -50,7 +50,7 @@ before = items(engine)
 # THE BUG: a background Brave tab refreshes while Thunderbird has focus.
 event_bus.publish(BrowserTabChanged(
     browser="chromium", connection_id="brave-1", window_id=1, tab_id=5,
-    title="SnakeoilOS", url="http://snakeoil",
+    title="SnakeoilOS",
 ))
 
 assert ("thunderbird", "SnakeoilOS") not in items(engine), (
@@ -81,7 +81,7 @@ assert engine.current.title == "Inbox - Unified Folders"
 # activity that happened while it was in the background.
 event_bus.publish(BrowserTabChanged(
     browser="chromium", connection_id="brave-1", window_id=1, tab_id=9,
-    title="ChatGPT", url="http://chatgpt",
+    title="ChatGPT",
 ))
 assert engine._latest_tab_by_kwin_window["10"].title == "ChatGPT"
 
@@ -100,7 +100,7 @@ assert engine.current.title == "ChatGPT", (
 event_bus.publish(FocusChanged(app="brave-browser", window_id="11", title="Brave"))
 event_bus.publish(BrowserTabChanged(
     browser="chromium", connection_id="brave-1", window_id=1, tab_id=5,
-    title="SnakeoilOS", url="http://snakeoil",
+    title="SnakeoilOS",
 ))
 
 assert engine._kwin_window_for_browser_window[("brave-1", 1)] == "10", (
@@ -113,7 +113,7 @@ assert engine.current.title != "SnakeoilOS", (
 # ...while that second window's OWN tabs work normally.
 event_bus.publish(BrowserTabChanged(
     browser="chromium", connection_id="brave-1", window_id=2, tab_id=7,
-    title="Lyrion Music Server", url="http://lyrion",
+    title="Lyrion Music Server",
 ))
 assert engine._kwin_window_for_browser_window[("brave-1", 2)] == "11"
 assert engine.current.title == "Lyrion Music Server"
@@ -133,7 +133,7 @@ assert engine.current.title == "Lyrion Music Server"
 event_bus.publish(FocusChanged(app="thunderbird", window_id="30", title="Compose"))
 event_bus.publish(BrowserTabChanged(
     browser="chromium", connection_id="brave-2", window_id=1, tab_id=1,
-    title="H268A", url="http://h268a",
+    title="H268A",
 ))
 assert ("brave-2", 1) not in engine._kwin_window_for_browser_window, (
     "a chromium extension must never bind to a Thunderbird window"
@@ -146,7 +146,7 @@ assert engine.current.title != "H268A", f"got {items(engine)}"
 event_bus.publish(FocusChanged(app="org.kde.konsole", window_id="40", title="Konsole"))
 event_bus.publish(BrowserTabChanged(
     browser="chromium", connection_id="brave-3", window_id=1, tab_id=1,
-    title="ChatGPT", url="http://chatgpt",
+    title="ChatGPT",
 ))
 assert ("brave-3", 1) not in engine._kwin_window_for_browser_window
 assert engine.current.app == "org.kde.konsole"
@@ -160,7 +160,7 @@ assert engine.current.title == "Konsole", f"got {items(engine)}"
 #    mean SOME tab-extension app, never a plain window.
 event_bus.publish(BrowserTabChanged(
     browser="ladybird", connection_id="new-1", window_id=1, tab_id=1,
-    title="Ladybird Home", url="http://ladybird",
+    title="Ladybird Home",
 ))
 assert ("new-1", 1) not in engine._kwin_window_for_browser_window, (
     "an unknown extension family must still not bind to a plain window"
@@ -172,7 +172,7 @@ assert engine.current.title == "Konsole", f"got {items(engine)}"
 event_bus.publish(FocusChanged(app="chromium", window_id="50", title="Ladybird"))
 event_bus.publish(BrowserTabChanged(
     browser="ladybird", connection_id="new-1", window_id=1, tab_id=1,
-    title="Ladybird Home", url="http://ladybird",
+    title="Ladybird Home",
 ))
 assert engine._kwin_window_for_browser_window[("new-1", 1)] == "50"
 assert engine.current.title == "Ladybird Home"
@@ -184,7 +184,7 @@ assert engine.current.title == "Ladybird Home"
 event_bus.publish(FocusChanged(app="brave-browser", window_id="10", title="Brave"))
 event_bus.publish(BrowserTabChanged(
     browser="chromium", connection_id="vivaldi-1", window_id=1, tab_id=1,
-    title="Vivaldi Forum", url="http://vivaldi",
+    title="Vivaldi Forum",
 ))
 assert ("vivaldi-1", 1) not in engine._kwin_window_for_browser_window, (
     "KWin window 10 is already Brave's - Vivaldi cannot bind to it too"

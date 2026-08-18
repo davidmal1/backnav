@@ -14,8 +14,8 @@ event_bus.publish(FocusChanged(app="org.kde.konsole", window_id="2", title="jour
 event_bus.publish(FocusChanged(app="brave-browser", window_id="3", title="New Tab"))
 
 # Tab-switching while Brave is focused should be recorded.
-event_bus.publish(BrowserTabChanged(browser="chromium", connection_id="test-instance-1", window_id=99, tab_id=1, title="GitHub - BackNav", url="https://github.com"))
-event_bus.publish(BrowserTabChanged(browser="chromium", connection_id="test-instance-1", window_id=99, tab_id=2, title="Docs", url="https://docs.example.com"))
+event_bus.publish(BrowserTabChanged(browser="chromium", connection_id="test-instance-1", window_id=99, tab_id=1, title="GitHub - BackNav"))
+event_bus.publish(BrowserTabChanged(browser="chromium", connection_id="test-instance-1", window_id=99, tab_id=2, title="Docs"))
 
 # Switching away and back to Brave should pick up the last known tab.
 event_bus.publish(FocusChanged(app="org.kde.kate", window_id="1", title="architecture.md"))
@@ -23,7 +23,7 @@ event_bus.publish(FocusChanged(app="brave-browser", window_id="3", title="New Ta
 
 # Tab activity while Brave is NOT focused should be cached but not recorded.
 event_bus.publish(FocusChanged(app="org.kde.konsole", window_id="2", title="journalctl"))
-event_bus.publish(BrowserTabChanged(browser="chromium", connection_id="test-instance-1", window_id=99, tab_id=3, title="Ignored while unfocused", url="https://example.com"))
+event_bus.publish(BrowserTabChanged(browser="chromium", connection_id="test-instance-1", window_id=99, tab_id=3, title="Ignored while unfocused"))
 
 # Repeated activation of the same window (KWin can fire windowActivated
 # more than once for one switch) must collapse into a single entry.

@@ -59,21 +59,30 @@ These are gaps in this repo, not in the process.
   rows and a bigger arrow. Rendered and compared at 4x before picking the
   crossover, rather than guessed.
 
-- **`<all_urls>` is almost certainly too broad**, in both `chromium/` and
-  `firefox/`. Nothing here uses a content script, `fetch`, or
-  `executeScript`; the only two things needing permission are reading
-  `tab.url` - already covered by the `tabs` permission - and opening the
-  WebSocket to `ws://127.0.0.1:8765`.
+- ~~**`<all_urls>` is too broad.**~~ **Gone entirely, 2026-08-18.** No
+  build requests any host permission now; all three ask only for `tabs`,
+  `storage` and `alarms`.
 
-  Worth narrowing before submitting, for two reasons that both bite:
-  reviewers treat `<all_urls>` as a request to justify, and users see
-  "Read and change all your data on all websites" at install time, which
-  is an alarming prompt for something that watches tab titles.
+  It was not narrowed, it was made unnecessary. `<all_urls>` was there to
+  read `tab.url` - and nothing ever read the URL back. The extensions
+  sent one on every tab switch, the daemon stored it on a
+  `BrowserTabChanged` event, and no code anywhere touched it again. So
+  every tab you visited crossed a socket for nothing, which is both a
+  privacy liability and the first thing a reviewer asks about.
 
-  Try removing `host_permissions` entirely first, then reload and confirm
-  the daemon still logs tab switches. If the socket turns out to need it,
-  narrow to the loopback origin rather than restoring `<all_urls>`.
-  Untested either way - the extension has always had it.
+  Removing the field removed the reason for the permission. Done in that
+  order deliberately: dropping the permission while still reading
+  `tab.url` risked it arriving `undefined`, which would have raised a
+  KeyError in the daemon on every tab switch and killed the connection.
+
+  Confirmed live afterwards - all three extensions connect, reconcile and
+  report correct titles with no host permission at all, which also
+  settles the open question of whether the loopback WebSocket needed one.
+  It did not.
+
+  What a user is asked to approve is now just tab access, and the honest
+  description of this extension is "reads tab titles, sends them to a
+  daemon on localhost".
 
 - ~~**Versions disagree.**~~ **Done 2026-08-18:** all three are `0.1`.
 
@@ -113,8 +122,7 @@ that does not.
 ## Suggested order
 
 1. ~~Icons.~~ Done - see above.
-2. Narrow the permissions, and re-test. Cheapest thing that improves both
-   review odds and the install prompt.
+2. ~~Narrow the permissions.~~ Done - removed entirely, see above.
 3. ~~Align versions.~~ Done. Still to decide: a real Firefox id.
 4. Thunderbird first, via whichever ATN route works - it has the most to
    gain, being the only build that does not currently survive a restart.

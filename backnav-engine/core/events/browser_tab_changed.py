@@ -10,4 +10,3 @@ class BrowserTabChanged(Event):
     window_id: int
     tab_id: int
     title: str
-    url: str

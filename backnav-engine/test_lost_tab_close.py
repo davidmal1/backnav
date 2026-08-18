@@ -62,11 +62,11 @@ event_bus.publish(FocusChanged(app="Claude", window_id="1", title="Claude"))
 event_bus.publish(FocusChanged(app="brave-browser", window_id="2", title="Brave"))
 event_bus.publish(BrowserTabChanged(
     browser="chromium", connection_id="conn-1", window_id=10,
-    tab_id=1, title="ABC Sport", url="https://abc.example/sport",
+    tab_id=1, title="ABC Sport",
 ))
 event_bus.publish(BrowserTabChanged(
     browser="chromium", connection_id="conn-1", window_id=10,
-    tab_id=2, title="Chris Scott", url="https://abc.example/chris",
+    tab_id=2, title="Chris Scott",
 ))
 event_bus.publish(FocusChanged(app="Claude", window_id="1", title="Claude"))
 
@@ -113,7 +113,7 @@ event_bus.publish(FocusChanged(app="Claude", window_id="1", title="Claude"))
 event_bus.publish(FocusChanged(app="brave-browser", window_id="2", title="Brave"))
 event_bus.publish(BrowserTabChanged(
     browser="chromium", connection_id="conn-1", window_id=10,
-    tab_id=2, title="Chris Scott", url="https://abc.example/chris",
+    tab_id=2, title="Chris Scott",
 ))
 event_bus.publish(FocusChanged(app="Claude", window_id="1", title="Claude"))
 
@@ -142,12 +142,12 @@ engine = NavigationEngine(event_bus)
 event_bus.publish(FocusChanged(app="brave-browser", window_id="2", title="Brave"))
 event_bus.publish(BrowserTabChanged(
     browser="chromium", connection_id="brave", window_id=10,
-    tab_id=1, title="Brave Tab", url="https://a.example",
+    tab_id=1, title="Brave Tab",
 ))
 event_bus.publish(FocusChanged(app="firefox", window_id="3", title="Firefox"))
 event_bus.publish(BrowserTabChanged(
     browser="firefox", connection_id="ff", window_id=20,
-    tab_id=7, title="Firefox Tab", url="https://b.example",
+    tab_id=7, title="Firefox Tab",
 ))
 
 # Firefox reconnects and reports only its own single tab. Brave's tab id
@@ -233,7 +233,7 @@ engine = NavigationEngine(event_bus)
 event_bus.publish(FocusChanged(app="brave-browser", window_id="2", title="Brave"))
 event_bus.publish(BrowserTabChanged(
     browser="chromium", connection_id="conn-1", window_id=10,
-    tab_id=1, title="Real Tab", url="https://a.example",
+    tab_id=1, title="Real Tab",
 ))
 event_bus.publish(FocusChanged(app="Claude", window_id="1", title="Claude"))
 

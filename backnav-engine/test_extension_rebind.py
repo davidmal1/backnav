@@ -34,7 +34,7 @@ engine = NavigationEngine(event_bus)
 event_bus.publish(FocusChanged(app="brave-browser", window_id="brave-kwin", title="Brave"))
 event_bus.publish(BrowserTabChanged(
     browser="chromium", connection_id="old-uuid", window_id=10,
-    tab_id=1, title="Extensions", url="chrome://extensions",
+    tab_id=1, title="Extensions",
 ))
 
 assert engine.current.title == "Extensions", engine.current.title
@@ -46,7 +46,7 @@ event_bus.publish(BrowserDisconnected(connection_id="old-uuid"))
 # Same browser, same KWin window, brand new instanceId.
 event_bus.publish(BrowserTabChanged(
     browser="chromium", connection_id="new-uuid", window_id=10,
-    tab_id=2, title="ABC News", url="https://abc.example",
+    tab_id=2, title="ABC News",
 ))
 
 assert engine.current.title == "ABC News", (
@@ -60,11 +60,11 @@ assert engine.current.title == "ABC News", (
 # looks like from the outside.
 event_bus.publish(BrowserTabChanged(
     browser="chromium", connection_id="new-uuid", window_id=10,
-    tab_id=1, title="Extensions", url="chrome://extensions",
+    tab_id=1, title="Extensions",
 ))
 event_bus.publish(BrowserTabChanged(
     browser="chromium", connection_id="new-uuid", window_id=10,
-    tab_id=2, title="ABC News", url="https://abc.example",
+    tab_id=2, title="ABC News",
 ))
 
 entries, _ = engine.walk_view(8)
@@ -87,7 +87,7 @@ engine = NavigationEngine(event_bus)
 event_bus.publish(FocusChanged(app="brave-browser", window_id="brave-kwin", title="Brave"))
 event_bus.publish(BrowserTabChanged(
     browser="chromium", connection_id="old-uuid", window_id=10,
-    tab_id=1, title="Stale Tab", url="https://stale.example",
+    tab_id=1, title="Stale Tab",
 ))
 event_bus.publish(FocusChanged(app="Claude", window_id="claude-kwin", title="Claude"))
 
@@ -109,12 +109,12 @@ engine = NavigationEngine(event_bus)
 event_bus.publish(FocusChanged(app="brave-browser", window_id="brave-kwin", title="Brave"))
 event_bus.publish(BrowserTabChanged(
     browser="chromium", connection_id="brave", window_id=10,
-    tab_id=1, title="Brave Tab", url="https://a.example",
+    tab_id=1, title="Brave Tab",
 ))
 event_bus.publish(FocusChanged(app="Vivaldi-snap", window_id="vivaldi-kwin", title="Vivaldi"))
 event_bus.publish(BrowserTabChanged(
     browser="chromium", connection_id="vivaldi", window_id=20,
-    tab_id=1, title="Vivaldi Tab", url="https://b.example",
+    tab_id=1, title="Vivaldi Tab",
 ))
 
 event_bus.publish(BrowserDisconnected(connection_id="vivaldi"))
@@ -123,7 +123,7 @@ event_bus.publish(BrowserDisconnected(connection_id="vivaldi"))
 event_bus.publish(FocusChanged(app="brave-browser", window_id="brave-kwin", title="Brave"))
 event_bus.publish(BrowserTabChanged(
     browser="chromium", connection_id="brave", window_id=10,
-    tab_id=2, title="Brave Tab Two", url="https://c.example",
+    tab_id=2, title="Brave Tab Two",
 ))
 
 assert engine.current.title == "Brave Tab Two", (
@@ -149,12 +149,12 @@ def two_browsers():
     event_bus.publish(FocusChanged(app="brave-browser", window_id="brave-kwin", title="Brave"))
     event_bus.publish(BrowserTabChanged(
         browser="chromium", connection_id="brave", window_id=10,
-        tab_id=1, title="Brave Tab", url="https://a.example",
+        tab_id=1, title="Brave Tab",
     ))
     event_bus.publish(FocusChanged(app="Vivaldi-snap", window_id="vivaldi-kwin", title="Vivaldi"))
     event_bus.publish(BrowserTabChanged(
         browser="chromium", connection_id="vivaldi", window_id=20,
-        tab_id=1, title="Vivaldi Tab", url="https://b.example",
+        tab_id=1, title="Vivaldi Tab",
     ))
     event_bus.publish(FocusChanged(app="Claude", window_id="claude-kwin", title="Claude"))
 
@@ -168,7 +168,7 @@ event_bus, engine = two_browsers()
 event_bus.publish(BrowserDisconnected(connection_id="vivaldi"))
 event_bus.publish(BrowserTabChanged(
     browser="chromium", connection_id="brave", window_id=10,
-    tab_id=3, title="Brave Background Tab", url="https://d.example",
+    tab_id=3, title="Brave Background Tab",
 ))
 event_bus.publish(FocusChanged(app="brave-browser", window_id="brave-kwin", title="Brave"))
 
@@ -203,7 +203,7 @@ engine = NavigationEngine(event_bus)
 event_bus.publish(FocusChanged(app="brave-browser", window_id="brave-kwin", title="Brave"))
 event_bus.publish(BrowserTabChanged(
     browser="chromium", connection_id="brave", window_id=10,
-    tab_id=1, title="Brave Tab", url="https://a.example",
+    tab_id=1, title="Brave Tab",
 ))
 
 assert engine._kwin_window_for_browser_window

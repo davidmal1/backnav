@@ -77,7 +77,6 @@ def _make_handler(event_bus):
                     window_id=data["windowId"],
                     tab_id=data["id"],
                     title=data["title"],
-                    url=data["url"],
                 ))
         finally:
             clients.remove(websocket)

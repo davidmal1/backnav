@@ -15,9 +15,9 @@ event_bus.publish(FocusChanged(app="org.kde.dolphin", window_id="1", title="arch
 event_bus.publish(FocusChanged(app="albert", window_id="2", title="Albert"))
 # 2: browser tab
 event_bus.publish(FocusChanged(app="brave-browser", window_id="3", title="New Tab"))
-event_bus.publish(BrowserTabChanged(browser="chromium", connection_id="conn-1", window_id=99, tab_id=1, title="Tab A", url="https://a.example.com"))
+event_bus.publish(BrowserTabChanged(browser="chromium", connection_id="conn-1", window_id=99, tab_id=1, title="Tab A"))
 # 3: a second tab that will later be closed
-event_bus.publish(BrowserTabChanged(browser="chromium", connection_id="conn-1", window_id=99, tab_id=2, title="Tab B", url="https://b.example.com"))
+event_bus.publish(BrowserTabChanged(browser="chromium", connection_id="conn-1", window_id=99, tab_id=2, title="Tab B"))
 # 4: another plain window
 event_bus.publish(FocusChanged(app="org.kde.konsole", window_id="4", title="journalctl"))
 
