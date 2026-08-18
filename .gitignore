@@ -6,3 +6,14 @@ __pycache__/
 # such a rule does not match - leaving it showing as untracked and
 # stageable by `git add -A`. Without the slash both forms are ignored.
 backnav-engine/certs
+
+# The chromium extension's signing key. Only the PUBLIC half belongs in
+# git, and it already is - it is the "key" field in
+# browser/chromium/manifest.json, which is what pins the extension id.
+# The private half is only needed to sign a .crx with a matching id, and
+# is kept purely so that option stays open.
+#
+# Deliberately OUTSIDE browser/chromium/: that whole directory is what
+# gets loaded as the extension and zipped for submission, so a key stored
+# in it would ship to the store and to every user.
+browser/.keys

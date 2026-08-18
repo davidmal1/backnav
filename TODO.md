@@ -39,6 +39,38 @@ samples `root.active`. Nothing left open in this section.
   chromium build minted `76385c1e` the moment it was re-added from a new
   directory.
 
+  **Fixed 2026-08-18**, and no longer a reason to hurry to the store: the
+  chromium manifest now carries a `key`, which is the Gecko builds'
+  `gecko.id` by another name. The id is derived from that key instead of
+  from the directory path, so it is now `fniehifalbhemldjkglbkbdigjpdimhh`
+  wherever the folder lives, and `storage.local` - and therefore
+  `instanceId` - survives with it. The private half sits in
+  `browser/.keys/`, gitignored, outside `browser/chromium/` so it cannot
+  be zipped into a submission; only the public half belongs in the
+  manifest, and it is not a secret.
+
+  Note for submission day: replace that `key` with the one from the Web
+  Store dashboard, so the local unpacked build and the published build
+  share an id rather than behaving as two different extensions.
+
+  Unpacked survives a browser restart, which is worth knowing but is not
+  a distribution route. Observed 2026-08-18 in Vivaldi and confirmed in
+  the journal: `719e4f06` disconnected at 08:52 and returned at 10:00
+  with the same `instanceId`. That is ordinary chromium behaviour -
+  "Load unpacked" registers the extension in the profile permanently and
+  reloads it from the path each start. It still needs Developer Mode
+  enabled, still never auto-updates, and until the `key` above was added
+  it was fragile to the folder moving. Fine as install-from-source, which
+  is what it already is; it does not buy trust, discovery or updates.
+
+  The genuinely shorter path, if a full public listing is not wanted:
+  both ecosystems can distribute WITHOUT one. AMO will sign an add-on for
+  self-distribution, handing back a signed `.xpi` to host anywhere, which
+  installs permanently in release builds - that is the one that would
+  stop Thunderbird needing a reload every restart. The Chrome Web Store
+  has an unlisted visibility, reachable by direct link and not
+  searchable, though it still wants a developer account and review.
+
   Decided while fixing the Gecko keepalive (a2cb133): Thunderbird stays
   on MV3 rather than dropping to MV2 with a persistent background page.
   MV2 was the fallback if the event page could not be kept alive, and it
