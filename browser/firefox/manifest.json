@@ -16,7 +16,6 @@
     "alarms"
   ],
   "background": {
-    "service_worker": "background.js",
     "scripts": [
       "background.js"
     ]
@@ -26,7 +25,12 @@
   },
   "browser_specific_settings": {
     "gecko": {
-      "id": "backnav@davidmal1.github.io"
+      "id": "backnav@davidmal1.github.io",
+      "data_collection_permissions": {
+        "required": [
+          "none"
+        ]
+      }
     }
   }
 }

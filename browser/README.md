@@ -173,6 +173,37 @@ the build that actually needs AMO, whether listed or self-distributed.
 Checking the pref file is not enough to tell these two apart - only
 installing one is.
 
+## Validating before you upload
+
+AMO runs Mozilla's `addons-linter` on submission. Run it yourself first -
+it is the difference between a two-minute upload and a round of
+rejections:
+
+```
+./build-xpi.sh firefox
+npx --yes addons-linter@latest backnav-firefox-0.1.xpi
+```
+
+Both Gecko builds are currently **0 errors, 0 warnings, 0 notices**. Two
+things had to be fixed to get there, on 2026-08-18:
+
+- **`data_collection_permissions` is now required** for all new Firefox
+  extensions. Both builds declare `"required": ["none"]`, which is the
+  documented value for an extension that transmits nothing off-device.
+  That is accurate here: tab titles go to a daemon on `127.0.0.1` and
+  never leave the machine. It is also only true because the URL
+  collection was removed - had those still been flowing, `none` would
+  have been a false declaration rather than a tidy one.
+
+- **`background.service_worker` was being ignored by Firefox.** A Chrome
+  key that had been copied into the Gecko build; Firefox runs
+  `background.scripts` and flags the other as unsupported. Removing it
+  changes no behaviour, since Firefox was already ignoring it.
+
+The linter does not check the things a human reviewer will: that the
+extension talks to `ws://127.0.0.1:8765`, and why. Expect to explain that
+it is a local companion daemon, and that the repository is public.
+
 ## Suggested order
 
 1. ~~Icons.~~ Done - see above.
