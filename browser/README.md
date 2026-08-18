@@ -42,6 +42,30 @@ id from the local unpacked one and the two behave as unrelated
 extensions - separate storage, separate `instanceId`, both talking to the
 daemon at once if both are installed.
 
+### Changing an id installs a SECOND copy - it does not upgrade
+
+The trap behind that paragraph, learned the hard way on 2026-08-18.
+
+Changing `gecko.id` on the Thunderbird build and reloading it did not
+replace the old add-on. Thunderbird treated
+`backnav@davidmal1.github.io` as a different add-on from
+`backnav@localhost` and installed it alongside, so both were loaded and
+both connected - visible in the daemon journal as two live ids reporting
+the same 4 tabs, and on screen as duplicate Thunderbird rows in the
+chooser.
+
+Which is obvious in hindsight: the id IS the add-on's identity, so
+changing it cannot be an upgrade of the thing it identifies.
+
+The same applies to the chromium `key`, and that matters precisely when
+swapping it for the Web Store's. Remove the unpacked copy at that point
+rather than leaving it loaded, or Brave and Vivaldi will run the store
+build and the unpacked build at once, both talking to the daemon.
+
+Symptom to recognise, in any browser: duplicate rows for one application
+that do not go away, and two connection ids in
+`journalctl --user -u backnav` reporting identical tab counts.
+
 ## What is not ready yet
 
 These are gaps in this repo, not in the process.
