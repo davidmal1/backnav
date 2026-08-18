@@ -158,6 +158,23 @@ samples `root.active`. Nothing left open in this section.
 
 ## Known, diagnosed, not yet fixed
 
+- **A fresh clone cannot start the daemon.** `websocket_server.run()`
+  calls `load_cert_chain` unconditionally, and `backnav-engine/certs/` is
+  gitignored - correctly, since it holds a private key - so a new user
+  gets `FileNotFoundError` at startup and no daemon at all. Found while
+  writing the front-page README on 2026-08-18.
+
+  It bites everyone, not just Thunderbird users: the TLS listener on 8766
+  exists solely for Thunderbird's HTTPS-Only rewrite, and a user who
+  never installs that extension still cannot start.
+
+  The README now documents generating one, which unblocks people. The
+  actual fix is for the TLS listener to be optional: if the certs are
+  absent, log one line and serve 8765 only. Nothing but the Thunderbird
+  extension connects to 8766, so its absence should cost exactly that
+  one feature rather than the whole daemon.
+
+
 - **A duplicate row for a tabbed app, which vanishes once you select it.**
   Reported 2026-08-17: two Thunderbird rows in the chooser, one selected,
   and on the next hold the other had gone. Nothing is lost - the row that
