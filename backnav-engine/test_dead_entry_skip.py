@@ -37,7 +37,11 @@ while True:
         break
     titles.append(item.title)
 
-assert titles == ["Tab A", "New Tab", "architecture.md"], f"got {titles}"
+# No "New Tab" between Tab A and architecture.md: Brave's window-level
+# fallback was superseded by the first real tab entry for that window
+# (see HistoryManager.push). The Brave window is still reachable - Tab A
+# is it - just not twice.
+assert titles == ["Tab A", "architecture.md"], f"got {titles}"
 
 # Once history is exhausted, forward should retrace the same live-only path.
 titles = []
@@ -47,6 +51,6 @@ while True:
         break
     titles.append(item.title)
 
-assert titles == ["New Tab", "Tab A", "journalctl"], f"got {titles}"
+assert titles == ["Tab A", "journalctl"], f"got {titles}"
 
 print("OK")

@@ -33,18 +33,31 @@ event_bus.publish(FocusChanged(app="Claude", window_id="4", title="Claude"))
 
 # Ordering is most-recently-used, front first - not a linear log of every
 # switch. Revisiting somewhere promotes its existing entry instead of
-# appending a second one, so the nine focus/tab events above collapse to
-# the six distinct targets they actually touched: Kate and Konsole each
-# appear once despite being visited twice. Brave's window-level "New Tab"
-# fallback sits at the back because it stopped being the active target as
-# soon as the extension reported a real tab.
+# appending a second one, so Kate and Konsole each appear once despite
+# being visited twice.
+#
+# Brave's window-level "New Tab" fallback is NOT here, and that is the
+# point of this expectation rather than an omission. It was written when
+# Brave took focus before the extension had reported anything, and the
+# first real tab entry for that window superseded it - see
+# HistoryManager.push.
+#
+# It used to survive, at the back of the list. That was wrong in use: two
+# rows appeared for one Brave window, and the fallback could not do what
+# its title said. Selecting "New Tab" raises the window and lands you on
+# whatever tab is current, because a fallback carries no restore_id to
+# return to a specific tab with. Reported 2026-08-17 as duplicate
+# Thunderbird rows.
+#
+# The cost, stated honestly: the moment before Brave's tabs were known is
+# no longer a place you can walk back to. It was never restorable as
+# labelled, so what is lost is a position, not a capability.
 expected_mru = [
     "Claude",
     "journalctl",
     "Docs",
     "architecture.md",
     "GitHub - BackNav",
-    "New Tab",
 ]
 
 mru = [item.title for item in engine._history.all_items()]

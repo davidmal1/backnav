@@ -112,6 +112,11 @@ class NavigationEngine:
         self._current_app = None
         self._current_window_id = None
 
+        # Whether KWin's window list has been folded in at startup - see
+        # seed(). Once only: a second seed would push stale window-level
+        # entries over history the user has since built by hand.
+        self._seeded = False
+
         # (WebSocket connection, browser-native windowId) -> the KWin
         # window it belongs to, learned the first time that browser
         # window is seen focused. Keyed by connection rather than the
@@ -144,6 +149,52 @@ class NavigationEngine:
         event_bus.subscribe(BrowserTabsAlive, self._on_browser_tabs_alive)
         event_bus.subscribe(BrowserDisconnected, self._on_browser_disconnected)
         event_bus.subscribe(WindowCaptionChanged, self._on_window_caption_changed)
+
+    def seed(self, windows):
+        """
+        Populate history from KWin's current window list.
+
+        History is learned from focus events and nothing else, so a daemon
+        that starts mid-session knows nothing: journalctl is followed with
+        `-n 0` (no backlog), and the KWin script emits its initial
+        activeWindow only when the SCRIPT loads, not when this reconnects.
+        The practical effect was that back/forward did nothing at all after
+        a daemon restart until the user had switched between two windows by
+        mouse - which is survivable while BackNav is a second switcher, and
+        not survivable at all if it is bound to Alt+Tab.
+
+        Seeded window-level only. Resolving each window's tab would mean a
+        D-Bus round trip per window at startup, and it is unnecessary: the
+        first real focus or tab event for a window supersedes its seeded
+        entry (see HistoryManager.push), so the detail arrives as soon as
+        it matters and costs nothing before then.
+
+        Ordered oldest-first by the caller, so the most recently raised
+        window ends up at the front where MRU expects it.
+        """
+        if self._seeded:
+            return
+
+        self._seeded = True
+
+        for window in windows:
+            window_id = window.get("windowId")
+            app = window.get("app")
+
+            if not window_id or not app:
+                continue
+
+            self._history.push(FocusItem(
+                app=app,
+                window_id=window_id,
+                title=window.get("title") or app,
+                restore_type=None,
+                restore_id=None,
+            ))
+
+    @property
+    def seeded(self) -> bool:
+        return self._seeded
 
     def _on_focus_changed(self, event: FocusChanged):
         # Transient/modal dialogs (an app's "Open File"/"Close Document"

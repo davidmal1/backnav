@@ -580,6 +580,10 @@ class OverlayController:
         self._engine.abandon_walk()
         self._reset_gesture()
 
+    def seed_windows(self, windows):
+        """KWin's window list, relayed from the panel - see state_json."""
+        self._engine.seed(windows)
+
     def set_highlight(self, index):
         """
         Put the highlight on an absolute row - what the mouse needs, since
@@ -651,8 +655,19 @@ class OverlayController:
         # what makes a hidden overlay work at all: a one-tap bounce raises
         # its window through exactly this path without the panel ever
         # being drawn.
+        # Asks the panel for KWin's window list, once, when history is
+        # empty. The daemon cannot get it any other way: it learns from a
+        # journal feed followed with -n 0, so a restart mid-session starts
+        # blind, while the panel already reads Workspace.stackingOrder to
+        # resolve icons. See NavigationEngine.seed.
+        seed_needed = not self._engine.seeded
+
         if self._direction is None or not self._overlay_armed:
-            return json.dumps({"active": False, "activateWindowId": activate_window_id})
+            return json.dumps({
+                "active": False,
+                "activateWindowId": activate_window_id,
+                "seedNeeded": seed_needed,
+            })
 
         # A stable list with a moving highlight, not a sliding window with
         # a pinned one - see NavigationEngine.walk_view() for why the
@@ -663,6 +678,7 @@ class OverlayController:
 
         return json.dumps({
             "active": True,
+            "seedNeeded": seed_needed,
             "direction": self._direction,
 
             # Tells the panel to take keyboard focus and accept

@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 from dbus_next.service import ServiceInterface, method
 
@@ -132,5 +133,30 @@ class NavigatorService(ServiceInterface):
             return "bad-index"
 
         self._overlay.set_highlight(row)
+
+        return "ok"
+
+    # KWin's window list, relayed by the panel when GetPeekState reports
+    # seedNeeded. The daemon has no way to ask KWin for this itself - it
+    # learns from a journal feed with no backlog - while the panel already
+    # reads Workspace.stackingOrder for icons. See NavigationEngine.seed.
+    #
+    # JSON in a string, like every other call here, rather than a struct
+    # signature: the proven call shape from KWinComponents.DBusCall passes
+    # strings, and a wrong signature fails with no diagnostic on the QML
+    # side at all.
+    @method()
+    def SeedWindows(self, windows_json: "s") -> "s":
+        try:
+            windows = json.loads(windows_json)
+        except ValueError:
+            return "bad-json"
+
+        # A malformed payload must not take the daemon's D-Bus loop down.
+        # This is fed by QML that cannot report an error to anyone.
+        if not isinstance(windows, list):
+            return "bad-json"
+
+        self._overlay.seed_windows(windows)
 
         return "ok"

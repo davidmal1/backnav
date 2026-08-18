@@ -91,6 +91,30 @@ class HistoryManager:
         self._walk = 0
         self._walk_activated.clear()
 
+        # A specific entry SUPERSEDES the plain window-level fallback for
+        # the same window, rather than sitting beside it.
+        #
+        # They are different targets by _target_of - one carries a
+        # restore_id and one does not - so without this both survive, and
+        # the switcher shows two rows for one window. Selecting either
+        # lands you in the same place, except the fallback cannot restore
+        # the tab, so it is strictly the worse of the two.
+        #
+        # Reported 2026-08-17 as duplicate Thunderbird rows, where the
+        # fallback was written during the second between the daemon
+        # starting and the extension connecting. Seeding history at
+        # startup would otherwise make that the normal case for every
+        # browser rather than a race.
+        #
+        # Only ever removes the LESS specific of the two. The reverse -
+        # dropping a tab entry when a window entry arrives - would throw
+        # away the better information.
+        if item.restore_id is not None:
+            for i, existing in enumerate(self._mru):
+                if existing.window_id == item.window_id and existing.restore_id is None:
+                    del self._mru[i]
+                    break
+
         for i, existing in enumerate(self._mru):
             if self._is_same_target(existing, item):
                 del self._mru[i]

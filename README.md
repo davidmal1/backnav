@@ -1,7 +1,9 @@
 # BackNav
 
-**Back and forward navigation for your desktop, the way a browser does it
-— and it can see inside tabs.**
+**An Alt+Tab alternative that understands tabs.**
+
+Most-recently-used switching across your windows *and* the tabs within
+them — browser tabs, terminal sessions, open documents.
 
 For KDE Plasma on Wayland.
 
@@ -9,9 +11,12 @@ For KDE Plasma on Wayland.
 
 ## The problem
 
-Alt+Tab switches *windows*, and it has done so since Windows 3.x, around
-1990. That was exactly the right design at the time: one window really
-was one thing you were doing.
+Alt+Tab has "Tab" in its name and does not understand tabs.
+
+That is not a joke at its expense — it is a date stamp. Alt+Tab has
+switched *windows* since Windows 3.x, around 1990, where "Tab" meant the
+key you pressed and nothing more. It was exactly the right design then:
+one window really was one thing you were doing.
 
 Tabs did not exist yet. Browsers would not popularise them for another
 decade, and it would be years after that before working in a dozen tabs
@@ -47,6 +52,14 @@ Tap to act, hold to look.
 Holding shows a list of where you have been, most recent first, with app
 icons and titles. Keep tapping to move down it, or let go and use the
 arrow keys. Enter confirms; Escape puts you back where you started.
+
+If that sounds like Alt+Tab, it is meant to. The ordering is
+most-recently-used, not a browser's back/forward stack: going somewhere
+promotes it to the front rather than appending a second copy of it, and
+there is no branch to lose. BackNav did work like browser history early
+on, and it was replaced — a linear stack accumulates duplicates of places
+you keep returning to, which is exactly the wrong shape for switching
+between a handful of things all day.
 
 ## What it can navigate
 
@@ -265,6 +278,21 @@ with nothing to restart.
 
 Two settings, both matters of feel: `DwellMs`, how long a pause ends a
 gesture, and `HoldMs`, how long a hold takes to summon the panel.
+
+## Can it replace Alt+Tab entirely?
+
+Yes — binding BackNav to Alt+Tab itself is a reasonable thing to do.
+
+It knows about every window, not only the ones you have visited: at
+startup the daemon has no history at all, so it asks the panel for KWin's
+window list and folds it in. Without that, back/forward did nothing
+whatsoever after a daemon restart until you had switched between two
+windows by hand — survivable for a second switcher, useless for your only
+one.
+
+The one case left is the daemon not running, where BackNav does nothing
+because the KWin script deliberately holds no logic of its own. If that
+worries you, keep Alt+Tab on a second binding as a way back to a terminal.
 
 ## Status
 

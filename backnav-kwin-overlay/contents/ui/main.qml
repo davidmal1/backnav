@@ -501,12 +501,74 @@ Window {
         dbusInterface: "com.backnav.Navigator"
         method: "GetPeekState"
         onFinished: function(returnValue) {
-            applyState(JSON.parse(returnValue[0]));
+            const state = JSON.parse(returnValue[0]);
+
+            // The daemon has no history and is asking for KWin's window
+            // list. It cannot read that itself - it learns from a journal
+            // feed with no backlog, so a restart mid-session leaves it
+            // blind until the user switches windows by hand. This panel
+            // already reads stackingOrder for icons, so it is the one
+            // piece with both the data and a line to the daemon.
+            if (state.seedNeeded)
+                root.sendSeed();
+
+            applyState(state);
         }
         // A failed call (daemon not running, D-Bus hiccup, ...) just
         // means the next tick tries again - same as the overlay simply
         // not being available, no different than backnav.service being
         // down for plain back()/forward() already.
+    }
+
+    // Guards against sending a second list while the first is still in
+    // flight. The poll runs every 80ms and the daemon only stops asking
+    // once it has been seeded, so without this a slow round trip means
+    // several lists queued behind each other.
+    property bool seedSent: false
+
+    function sendSeed() {
+        if (root.seedSent)
+            return;
+
+        root.seedSent = true;
+
+        const windows = KWinComponents.Workspace.stackingOrder;
+        const payload = [];
+
+        for (let i = 0; i < windows.length; i++) {
+            const w = windows[i];
+
+            // Same filter the daemon applies to focus events: only real,
+            // top-level windows. Without it the seed would carry panels,
+            // docks, the desktop itself and this very overlay, none of
+            // which anyone wants to navigate back to.
+            if (!w.normalWindow || w.skipSwitcher)
+                continue;
+
+            payload.push({
+                windowId: w.internalId.toString(),
+                app: w.resourceClass,
+                title: w.caption
+            });
+        }
+
+        // Sent oldest-first, which stackingOrder already is: it runs
+        // bottom to top, so the topmost window arrives last and ends up
+        // at the front of the MRU list where it belongs.
+        root.seedArg = JSON.stringify(payload);
+        seedCall.call();
+    }
+
+    property string seedArg: "[]"
+
+    KWinComponents.DBusCall {
+        id: seedCall
+        service: "com.backnav.Navigator"
+        path: "/com/backnav/Navigator"
+        dbusInterface: "com.backnav.Navigator"
+        method: "SeedWindows"
+        arguments: [root.seedArg]
+        onFinished: function(returnValue) {}
     }
 
     // Keeps the panel up briefly after the gesture ends. Without this it

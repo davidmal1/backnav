@@ -1,3 +1,4 @@
+import json
 import os
 import unittest.mock as mock
 
@@ -104,7 +105,13 @@ controller = OverlayController(fake_engine)
 controller._loop = loop
 
 # Before anything happens, the overlay must report itself inactive.
-assert controller.state_json() == '{"active": false, "activateWindowId": null}', controller.state_json()
+#
+# Matched field by field rather than against a literal string, so adding
+# a key to the report does not fail a test that is only about `active`.
+# It used to be a whole-string compare, and gained a third key.
+before = json.loads(controller.state_json())
+assert before["active"] is False, before
+assert before["activateWindowId"] is None, before
 
 # A signal for some other component/shortcut entirely (e.g. a completely
 # unrelated global shortcut also owned by kglobalaccel) must be ignored.

@@ -72,7 +72,10 @@ event_bus.publish(FocusChanged(app="Claude", window_id="1", title="Claude"))
 
 titles = titles_walking_back(engine)
 
-assert titles == ["Chris Scott", "ABC Sport", "Brave"], titles
+# The bare "Brave" window entry is gone: the first tab entry for that
+# window superseded it (see HistoryManager.push), so one Brave window
+# yields one row per tab rather than a row per tab plus a spare.
+assert titles == ["Chris Scott", "ABC Sport"], titles
 
 # The Chris Scott tab is closed and the notification is LOST - the worker
 # was respawning, so nothing is published here at all. Then the worker
@@ -83,7 +86,7 @@ titles = titles_walking_back(engine)
 
 assert "Chris Scott" not in titles, \
     f"closed tab survived a lost close notification: {titles}"
-assert titles == ["ABC Sport", "Brave"], titles
+assert titles == ["ABC Sport"], titles
 
 # ---- Live tabs are left strictly alone -------------------------------
 #
@@ -95,7 +98,7 @@ event_bus.publish(BrowserTabsAlive(connection_id="conn-1", tab_ids=frozenset({1}
 
 titles = titles_walking_back(engine)
 
-assert titles == ["ABC Sport", "Brave"], titles
+assert titles == ["ABC Sport"], titles
 
 # ---- A retired tab is not resurrected by refocusing its window -------
 #
