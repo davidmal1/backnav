@@ -17,3 +17,6 @@ backnav-engine/certs
 # gets loaded as the extension and zipped for submission, so a key stored
 # in it would ship to the store and to every user.
 browser/.keys
+
+# Build artifacts - produced by browser/build-xpi.sh on demand.
+browser/*.xpi

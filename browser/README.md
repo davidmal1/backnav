@@ -150,21 +150,39 @@ AMO signs it and hands back a signed `.xpi` that you host anywhere.
 It installs permanently in release Firefox, with no listing and no store
 page. This is the genuinely shorter path.
 
-**ATN** for Thunderbird - I have not confirmed whether it offers an
-equivalent self-distribution signing flow, so treat that as a question to
-answer rather than a plan. If it does, it is the fix for the thing that
-currently annoys most: the Thunderbird build is loaded as a *temporary*
-add-on and has to be re-added every single restart. Firefox and the
-chromium browsers already survive restarts; Thunderbird is the only one
-that does not.
+**ATN** for Thunderbird does offer self-distribution - its review policy
+says add-ons "intended for internal or private use, or for distribution
+testing may not be listed on ATN. Such add-ons may be uploaded for
+self-distribution instead."
+
+**But Thunderbird does not need it.** Answered 2026-08-18, and the answer
+is that no store is required at all: Thunderbird ships
+`xpinstall.signatures.required` defaulting to false and honours it, so an
+unsigned `.xpi` installs permanently and survives restarts. Confirmed by
+doing it. `build-xpi.sh` produces one; `thunderbird/readme.md` has the
+install steps.
+
+That retires what had been the most annoying thing here - the Thunderbird
+build being a *temporary* add-on that vanished on every restart. It also
+means ATN is now optional for Thunderbird, wanted only for discovery.
+
+Do not assume the same of Firefox. It ships the same pref default and
+then ignores it: release builds compile signature enforcement in
+(bugzilla 1298806), so an unsigned `.xpi` is refused there. Firefox is
+the build that actually needs AMO, whether listed or self-distributed.
+Checking the pref file is not enough to tell these two apart - only
+installing one is.
 
 ## Suggested order
 
 1. ~~Icons.~~ Done - see above.
 2. ~~Narrow the permissions.~~ Done - removed entirely, see above.
 3. ~~Align versions, and decide a real Firefox id.~~ Done.
-4. Thunderbird first, via whichever ATN route works - it has the most to
-   gain, being the only build that does not currently survive a restart.
-5. Chromium last. It is the fiddliest (account, fee, review, and the
+4. ~~Thunderbird first, via whichever ATN route works.~~ Done, and it
+   needed no store: it installs unsigned and survives restarts. ATN is
+   now optional, for discovery only.
+5. Firefox next - the one that genuinely needs AMO, since release builds
+   refuse unsigned add-ons. Self-distribution signing is the short route.
+6. Chromium last. It is the fiddliest (account, fee, review, and the
    `key` swap above) and the one whose pain has already been removed by
    pinning the id.

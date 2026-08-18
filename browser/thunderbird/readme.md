@@ -1,11 +1,27 @@
-Load as a temporary add-on in Thunderbird.
+Install it properly - Thunderbird does not require signed add-ons.
 
-about:debugging#/runtime/this-firefox (or the equivalent page in your
-Thunderbird version)
+    ../build-xpi.sh thunderbird
 
-Load Temporary Add-on
+Then in Thunderbird: **Add-ons and Themes** -> the gear icon ->
+**Install Add-on From File**, and pick the `.xpi` that prints.
 
-Select manifest.json in this directory.
+It stays installed across restarts. Confirmed live 2026-08-18, including
+that it upgrades an existing install rather than sitting alongside it,
+because the id in the manifest matches - so `storage.local`, and with it
+the `instanceId` the daemon keys on, carry over.
+
+This is worth knowing because it is not true of Firefox: release Firefox
+compiles signature enforcement in and ignores
+`xpinstall.signatures.required`, so the same unsigned `.xpi` is refused
+there and has to be signed by AMO first. Thunderbird ships that pref
+defaulting to false and honours it.
+
+### Loading it temporarily instead
+
+For iterating on the extension itself, `about:debugging#/runtime/this-firefox`
+-> **Load Temporary Add-on** -> pick `manifest.json` here. Reloads on
+demand, which the installed form does not, but it is **gone on every
+restart** - which is what made this the daily annoyance it used to be.
 
 ## One-time TLS setup
 
