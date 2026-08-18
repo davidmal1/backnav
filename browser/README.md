@@ -46,10 +46,18 @@ daemon at once if both are installed.
 
 These are gaps in this repo, not in the process.
 
-- **No icons anywhere.** No `icons` key in any of the three manifests.
-  The Chrome Web Store requires a 128x128, and both Gecko stores want a
-  set. This is the one hard blocker - nothing can be submitted without
-  it.
+- ~~**No icons anywhere.**~~ **Done 2026-08-18.** All three builds carry
+  16/32/48/96/128 in `icons/`, generated from `icon-src/` by
+  `icon-src/render.sh`.
+
+  Two SVG sources rather than one, which is worth knowing before editing
+  them. The full artwork is a miniature of the switcher itself - the
+  overlay's own `#202020` panel, its `#80c0ff` highlight on the back
+  arrow, and three rows dimming with depth exactly as the panel dims the
+  entries a walk has passed. Below about 48px those three rows merge into
+  an illegible smear, so 16 and 32 use `icon-small.svg`: two chunkier
+  rows and a bigger arrow. Rendered and compared at 4x before picking the
+  crossover, rather than guessed.
 
 - **`<all_urls>` is almost certainly too broad**, in both `chromium/` and
   `firefox/`. Nothing here uses a content script, `fetch`, or
@@ -67,9 +75,14 @@ These are gaps in this repo, not in the process.
   narrow to the loopback origin rather than restoring `<all_urls>`.
   Untested either way - the extension has always had it.
 
-- **Versions disagree.** `chromium/` and `firefox/` say `0.1`,
-  `thunderbird/` says `0.1.0`. Pick one scheme and bump all three to a
-  real release number.
+- ~~**Versions disagree.**~~ **Done 2026-08-18:** all three are `0.1`.
+
+  Worth knowing before the first submission: a store will not accept the
+  same version twice, and versions may only go up. So `0.1` is spent the
+  moment anything is uploaded, even a submission that is then rejected -
+  the next attempt has to be `0.2` or `0.1.1`. Bump all three together
+  regardless of which build changed, so a single number always describes
+  the whole set.
 
 - **`backnav@local` is a placeholder id** for the Firefox build. It works,
   but a domain you control reads better on a public listing, and the id
@@ -99,10 +112,10 @@ that does not.
 
 ## Suggested order
 
-1. Icons. Hard blocker, and needed identically by all three.
+1. ~~Icons.~~ Done - see above.
 2. Narrow the permissions, and re-test. Cheapest thing that improves both
    review odds and the install prompt.
-3. Align versions, and decide on a real Firefox id.
+3. ~~Align versions.~~ Done. Still to decide: a real Firefox id.
 4. Thunderbird first, via whichever ATN route works - it has the most to
    gain, being the only build that does not currently survive a restart.
 5. Chromium last. It is the fiddliest (account, fee, review, and the

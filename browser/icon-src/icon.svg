@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!-- Panel, in the overlay's own colours: #202020 ground, hairline
+       white border. The icon is a miniature of the switcher itself. -->
+  <rect x="3" y="3" width="122" height="122" rx="27" fill="#202020"/>
+  <rect x="3.5" y="3.5" width="121" height="121" rx="26.5"
+        fill="none" stroke="#ffffff" stroke-opacity="0.25" stroke-width="1"/>
+
+  <!-- Back arrow, in the overlay's highlight blue. Solid rather than a
+       chevron stroke so it survives being scaled to 16px. -->
+  <path d="M 24 64 L 55 41 L 55 87 Z" fill="#80c0ff"/>
+
+  <!-- Three MRU rows, dimming with depth exactly as the panel dims the
+       entries a walk has already passed. -->
+  <rect x="66" y="41" width="40" height="14" rx="7" fill="#ffffff"/>
+  <rect x="66" y="60" width="40" height="14" rx="7" fill="#ffffff" fill-opacity="0.5"/>
+  <rect x="66" y="79" width="40" height="14" rx="7" fill="#ffffff" fill-opacity="0.28"/>
+</svg>
