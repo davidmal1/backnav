@@ -442,10 +442,18 @@ class OverlayController:
             return
 
         # With the chooser open, a tap of the shortcut is just another way
-        # to move the highlight - exactly what Up/Down do - and raises
-        # nothing. Returning here also means no commit is scheduled: a
-        # focused chooser ends on Enter or Escape and never on a timer,
-        # so there is no clock to beat while you read the list.
+        # to move the highlight - what Up/Down do - and raises nothing.
+        # Returning here also means no commit is scheduled: a focused
+        # chooser ends on Enter or Escape and never on a timer, so there
+        # is no clock to beat while you read the list.
+        #
+        # This is not merely an alternative to the arrow keys, it is the
+        # only one available while the modifier is still down. Meta+Up and
+        # Meta+Down are KWin's quick-tile shortcuts, and a global shortcut
+        # is grabbed before any focused window sees it - so arrows reach
+        # the panel only once the keys are released. Keeping this path
+        # working is what makes the chooser usable mid-hold at all (see
+        # backnav-kwin-overlay/README.md).
         if self._chooser:
             if not self._held:
                 self._engine.step(direction)

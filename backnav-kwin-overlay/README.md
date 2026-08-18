@@ -149,10 +149,38 @@ JS state).
 
 ## The chooser, and why closing it needs two detectors
 
-Holding the shortcut past the keyboard's auto-repeat delay opens the
-panel as a **chooser**: it takes keyboard focus, Up/Down move the
-highlight, Enter confirms, Escape returns you where you started. There
-is no timeout - it stays up until you decide.
+Holding the shortcut opens the panel as a **chooser**: it takes keyboard
+focus, Enter confirms, Escape returns you where you started. There is no
+timeout - it stays up until you decide.
+
+### Driving it: keep tapping, or let go first
+
+There are two ways to move the highlight, and the difference matters
+more than it looks:
+
+- **Keep holding Meta and tap Tab again.** The Alt+Tab gesture. A tap
+  inside an open chooser steps the highlight instead of navigating.
+- **Release everything, then use Up/Down.** The panel keeps focus after
+  the keys come up, so the arrows reach it.
+
+What does NOT work is **Up/Down while Meta is still held**, and the
+reason is nothing to do with this panel. `Meta+Up` and `Meta+Down` are
+KWin's own quick-tile shortcuts, and a global shortcut is grabbed before
+any focused window sees it. So the panel never receives the key: Meta+Up
+tiles the window behind it, Meta+Down appears to do nothing. Meta+Left,
+Meta+Right and Meta+PgUp/PgDown are bound by default too.
+
+This surfaced as a bug report on 2026-08-17 - "up/down doesn't work
+anymore, it just moves windows on the desktop" - and it is worth
+recording that nothing broke. It became reachable when the panel went
+hold-only (f8639bf): before that a tap-driven walk could raise the panel
+with no modifier held, so arrows worked by default. Now the only route in
+is a hold, which by definition leaves a modifier down.
+
+Not fixable from here, only avoidable. KWin's own tabbox escapes this by
+grabbing the keyboard from C++, which a declarativescript cannot do, and
+claiming Meta+Up ourselves would break tiling system-wide to fix one
+panel.
 
 Taking focus is what makes it work and also what makes it dangerous. A
 chooser that stays open after you have moved on is a window silently
