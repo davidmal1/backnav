@@ -520,18 +520,23 @@ Window {
         // down for plain back()/forward() already.
     }
 
-    // Guards against sending a second list while the first is still in
-    // flight. The poll runs every 80ms and the daemon only stops asking
-    // once it has been seeded, so without this a slow round trip means
-    // several lists queued behind each other.
-    property bool seedSent: false
+    // There is deliberately NO guard against sending this more than once,
+    // and that is the third attempt at this line.
+    //
+    // A permanent "already sent" latch silenced the panel for the rest of
+    // the session after its first seed, which at login is always the
+    // useless one - there are no windows open yet. An in-flight flag
+    // cleared by onFinished then stuck ON instead: the seed sent during a
+    // daemon restart failed, onFinished never fired for it, and the panel
+    // went quiet again. Both were live failures, both looked correct.
+    //
+    // So this depends on nothing firing. Duplicates are harmless because
+    // the DAEMON decides when it has been seeded: seed() sets its flag on
+    // the first call and ignores every later one, and stops asking in the
+    // same breath. The worst case is one or two extra calls in the 80ms
+    // before it processes the first, which costs a JSON parse.
 
     function sendSeed() {
-        if (root.seedSent)
-            return;
-
-        root.seedSent = true;
-
         const windows = KWinComponents.Workspace.stackingOrder;
         const payload = [];
 
@@ -568,6 +573,9 @@ Window {
         dbusInterface: "com.backnav.Navigator"
         method: "SeedWindows"
         arguments: [root.seedArg]
+
+        // Nothing to do on the reply. A failure just means the daemon is
+        // still asking on the next poll, which is the retry.
         onFinished: function(returnValue) {}
     }
 
