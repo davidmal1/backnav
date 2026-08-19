@@ -1,243 +1,115 @@
 # Outstanding
 
-Working list for BackNav. All of it lives on `main` now: the
-`mru-navigation` branch was merged in 54903f2 and retired, along with
-its worktree, so `/home/david/Projects/backnav` is the only checkout and
-the daemon, the KWin packages and the extensions all load from it.
+Where BackNav is up to, and what is left. Everything lives on `main`, and
+`main` is pushed.
 
-## Overlay tidy-up
+Reasoning that used to sit in this file has moved to where the code is:
+`browser/README.md` for distribution, `dev/README.md` for the sandbox
+traps, and comments next to the things they explain. This is a status
+list, not an archive.
 
-Done (2026-08-13), tested live: app icons in place of the resourceClass
-column, mouse hover and click, and everything scaled up behind a single
-`ui` multiplier in `main.qml`.
+## Still open
 
-Dimming of already-passed rows was checked at the larger size and is
-fine as it stands.
+- **Chrome Web Store submission**, for the chromium build - one
+  submission covers Chrome, Brave and Vivaldi.
 
-The poll Timer was split in two and tested live - the chooser still
-dismisses on click-away. `pollTimer` runs unconditionally and only asks
-the daemon what to draw; `focusWatch` runs `while root.chooser` and only
-samples `root.active`. Nothing left open in this section.
+  **Optional now, which it was not a week ago.** The reason to hurry was
+  that an unpacked extension took its id from the directory it loaded
+  from, so moving the folder minted a new `instanceId` and broke tab
+  binding. The manifest `key` fixed that, so the store now buys
+  distribution and nothing else: Developer Mode is no longer a nuisance
+  you are working around, it is just something you happen to have on.
 
-## Then
+  So this is worth doing exactly as much as you want BackNav usable by
+  people who are not you. For them it removes a real barrier - clone a
+  repo, enable Developer Mode, load unpacked, then repeat every update by
+  hand. For you it changes nothing.
 
-- **Finalise the browser extensions - signed, and in the stores.**
-  Chrome Web Store for the chromium build (covers Brave and Vivaldi),
-  AMO for Firefox, ATN for Thunderbird. Right now all three are loaded
-  unpacked from this worktree, which is not just an install
-  inconvenience: an unpacked extension's id depends on the directory it
-  was loaded from, so moving or re-adding it mints a new `instanceId`.
-  That is exactly what caused the re-bind bug fixed in 660c952. Signed
-  and installed from a store, the id is stable and updates arrive on
-  their own.
-
-  That churn is **chromium-only**, though - corrected 2026-08-14, having
-  been written here as if it applied to all three. Both Gecko builds pin
-  `browser_specific_settings.gecko.id`, so their extension id survives a
-  path change and their stored `instanceId` survives with it. Watched
-  live: Thunderbird kept `bb3815d6` across several reloads, while the
-  chromium build minted `76385c1e` the moment it was re-added from a new
-  directory.
-
-  **Fixed 2026-08-18**, and no longer a reason to hurry to the store: the
-  chromium manifest now carries a `key`, which is the Gecko builds'
-  `gecko.id` by another name. The id is derived from that key instead of
-  from the directory path, so it is now `fniehifalbhemldjkglbkbdigjpdimhh`
-  wherever the folder lives, and `storage.local` - and therefore
-  `instanceId` - survives with it. The private half sits in
-  `browser/.keys/`, gitignored, outside `browser/chromium/` so it cannot
-  be zipped into a submission; only the public half belongs in the
-  manifest, and it is not a secret.
-
-  Note for submission day: replace that `key` with the one from the Web
-  Store dashboard, so the local unpacked build and the published build
-  share an id rather than behaving as two different extensions.
-
-  Unpacked survives a browser restart, which is worth knowing but is not
-  a distribution route. Observed 2026-08-18 in Vivaldi and confirmed in
-  the journal: `719e4f06` disconnected at 08:52 and returned at 10:00
-  with the same `instanceId`. That is ordinary chromium behaviour -
-  "Load unpacked" registers the extension in the profile permanently and
-  reloads it from the path each start. It still needs Developer Mode
-  enabled, still never auto-updates, and until the `key` above was added
-  it was fragile to the folder moving. Fine as install-from-source, which
-  is what it already is; it does not buy trust, discovery or updates.
-
-  The genuinely shorter path, if a full public listing is not wanted:
-  both ecosystems can distribute WITHOUT one. AMO will sign an add-on for
-  self-distribution, handing back a signed `.xpi` to host anywhere, which
-  installs permanently in release builds - that is the one that would
-  stop Thunderbird needing a reload every restart. The Chrome Web Store
-  has an unlisted visibility, reachable by direct link and not
-  searchable, though it still wants a developer account and review.
-
-  Decided while fixing the Gecko keepalive (a2cb133): Thunderbird stays
-  on MV3 rather than dropping to MV2 with a persistent background page.
-  MV2 was the fallback if the event page could not be kept alive, and it
-  would have sidestepped Gecko's idle rules entirely - but the keepalive
-  works, so the fallback is not needed and MV2 would only have meant
-  submitting on a manifest version with no future. Recorded so it is not
-  re-argued at submission time.
-
-- **Done (2026-08-17):** `~/.config/backnavrc`, with `DwellMs` reloading
-  live. No watcher and no reload signal - each read stats the file and
-  re-parses only if it changed, so an edit lands on the next gesture.
-  Bad input is reported once to the journal and ignored in favour of the
-  default; a typo costs a log line, not a working daemon. Copy
-  `backnavrc.example` to get a commented starting point.
-
-  `DwellMs` is the only setting, and the file is deliberately not a home
-  for every number that could be one. A setting is a promise to keep a
-  behaviour working and a question the user has to answer, so the bar is
-  "genuinely a matter of taste".
-
-  Which is what settled the panel question in the same sitting. The
-  overlay's "appear after N taps" threshold was briefly made configurable
-  here, then removed outright: **taps never show the panel now, holds
-  always do.** Tried at 2, judged intrusive, raised to 4, dropped after
-  use - no value was right, because any threshold splits a walk into a
-  quiet phase and a loud one with the change landing mid-gesture. Making
-  it a setting would have preserved a bad idea behind a default.
-
-  Hold being the only route to the panel meant it inherited the system
-  keyboard repeat delay (600ms here) and felt sluggish. **Fixed the same
-  day:** a press starts a `HoldMs` timer (default 250ms) which the release
-  cancels, so a hold is detected by the clock rather than by waiting for
-  auto-repeat. Repeats are kept as a backstop, for a machine whose repeat
-  delay is shorter than `HoldMs`. `HoldMs` is the second backnavrc
-  setting.
-
-- **Done (2026-08-17):** the sandbox lessons are written up, under
-  "Things that have actually gone wrong" in `dev/README.md` - the
-  `pkill -f` self-kill, `stop` being unable to see `exec`-started
-  processes, hot-loaded QML outliving `unloadScript`, and `unloadScript`
-  taking a package id where `backnav` is the event producer. They live
-  next to the tool now rather than in this file.
-
-  Writing it up turned up one more, which is in there too: the
-  `Script1`, `Script2`... nodes under `/Scripting` are NOT a reliable
-  count of live scripts. Both packages reported `isScriptLoaded true`
-  with the overlay demonstrably running while introspection listed a
-  single node, having listed two earlier the same day. Ask about a
-  package by name.
-
-- Kate's `openUrl` reopen bug is **fixed** (2026-08-14). `restore()` now
-  calls `activate(token)` - "switch to this document if it still exists"
-  - instead of `openUrl(path)`, which means "open this file" and did.
-
-  It never needed the `live_targets()` machinery the qpdfview fix used,
-  and the reason it was deferred turned out not to apply: confirming a
-  live open-documents query needed a running Kate, but no such query is
-  involved. Probing Kate's D-Bus surface settled three things - there is
-  genuinely no way to enumerate open documents; `tokenOpenUrl` on an
-  ALREADY-open path returns that document's existing token rather than
-  duplicating the tab, and does not raise Kate's window; and `activate()`
-  on a dead or invented token is a silent no-op. So the adapter mints a
-  token at resolve time, when the document is provably open, and restores
-  with it.
-
-  Confirmed end to end against a live Kate: a document was tokenised
-  while open, closed by hand, and `restore()` on its entry returned
-  success while changing nothing - no reopened tab, `windowFilePath`
-  still empty. Not a vacuous pass either, since `restore()` on the same
-  token while the document was still open did activate it.
-
-  **Also done (2026-08-17):** closed Kate documents are now pruned from
-  the switcher rather than left as inert rows, via Kate's
-  `documentClosed(token)` signal - `core/kate_watcher.py`. Left as a row
-  they were not harmless after all: selecting one still raised the Kate
-  *window*, landing you in Kate on whatever document happened to be
-  current instead of the one you picked.
-
-  One match rule covers every Kate process rather than a subscription per
-  pid - the token identifies the document by itself, so the sender does
-  not matter, which avoids both per-pid lifecycle and starting async
-  subscriptions from the KWin monitor thread. The adapter's token cache
-  doubles as `live_targets()`, so the engine's existing skip loop does the
-  work with no new engine code. Confirmed end to end against a live Kate.
-
-## Known, diagnosed, not yet fixed
+  Everything needed is ready: icons, minimal permissions, aligned
+  versions, pinned id. See `browser/README.md`, including the note about
+  swapping the manifest `key` for the Web Store's on submission day.
 
 - **A fresh clone cannot start the daemon.** `websocket_server.run()`
-  calls `load_cert_chain` unconditionally, and `backnav-engine/certs/` is
-  gitignored - correctly, since it holds a private key - so a new user
-  gets `FileNotFoundError` at startup and no daemon at all. Found while
-  writing the front-page README on 2026-08-18.
+  calls `load_cert_chain` unconditionally and `backnav-engine/certs/` is
+  gitignored - correctly, it holds a private key - so a new user gets
+  `FileNotFoundError` and no daemon at all.
 
-  It bites everyone, not just Thunderbird users: the TLS listener on 8766
-  exists solely for Thunderbird's HTTPS-Only rewrite, and a user who
+  It bites everyone, not only Thunderbird users: the TLS listener on 8766
+  exists solely for Thunderbird's HTTPS-Only rewrite, and someone who
   never installs that extension still cannot start.
 
-  The README now documents generating one, which unblocks people. The
-  actual fix is for the TLS listener to be optional: if the certs are
-  absent, log one line and serve 8765 only. Nothing but the Thunderbird
-  extension connects to 8766, so its absence should cost exactly that
-  one feature rather than the whole daemon.
+  The README documents generating a certificate, which unblocks people.
+  The actual fix is to make the TLS listener optional: if the certs are
+  absent, log one line and serve 8765 only, so a missing cert costs that
+  one feature rather than everything.
 
+## Worth watching in use
 
-- **A duplicate row for a tabbed app, which vanishes once you select it.**
-  Reported 2026-08-17: two Thunderbird rows in the chooser, one selected,
-  and on the next hold the other had gone. Nothing is lost - the row that
-  vanished pointed at the same window - but it reads alarmingly, and the
-  natural reading ("I must have two windows open") is wrong.
+Things that are fixed but whose fix is thin, or that would be quiet if
+they came back.
 
-  Reproduced, so this is understood rather than suspected. There are two
-  entries because there really are two: a `browser_tab` entry, and a plain
-  window-level fallback with `restore_type=None` for the same window. The
-  fallback is written when the window gains focus BEFORE the extension has
-  reported a tab for it - which is the daemon-restart race, and matches the
-  incident exactly (daemon up at 14:49:21, Thunderbird connected at
-  14:49:22).
+- **A browser session restore filling the switcher with pages you never
+  opened.** Fixed 2026-08-19 by guarding `tabs.onUpdated` on `tab.active`
+  in the chromium and firefox extensions, and confirmed against a real
+  31-tab Brave restore that produced three entries.
 
-  It then vanishes because `_is_noop_window_entry` hides a plain fallback
-  only when we hold better information for that window AND it is the
-  window that currently has focus. Selecting Thunderbird satisfies the
-  second condition, so the duplicate hides itself the moment you act on
-  it. Reproduction:
+  Flagged here because it has **no automated test** - it is a JavaScript
+  fix and there is no JS harness in this project. If a restore ever
+  floods the list again, the answer is to drop the `onUpdated` listener
+  entirely rather than guard it further; it exists only so a
+  single-page app changing its title is noticed without a tab switch.
 
-  ```
-  focus other -> focus TB (no tab yet) -> tab event for TB -> focus other
-      = two TB rows
-  focus TB
-      = one TB row
-  ```
+- The three tab-tracking signatures from 660c952, which wanted real use
+  rather than more tests:
+  - a **closed** tab still offered in the chooser. Reconciliation should
+    retire it on the extension's next connect - the journal line
+    `<id> reports N live tabs` is that happening;
+  - a browser whose **tab switches stop being noticed**, with one stale
+    entry pinned near the top. That is the binding wedge returning;
+  - a row naming the **wrong application**, the "thunderbird -
+    SnakeoilOS" shape, where a background tab is stamped with whatever
+    had focus.
 
-  The obvious fix - dropping the `window_id != _current_window_id` clause
-  so the fallback is always hidden when better info exists - is **wrong**,
-  and the suite says so: `test_navigation_engine` and `test_lost_tab_close`
-  both lose a real, reachable entry ("New Tab", "Brave"). Where no tab
-  entry exists for that window the fallback is the only representation of
-  it, and swallowing it is worse than showing a duplicate.
+  Restarting the daemon clears all three symptoms, so if a restart fixes
+  it, it was state and not logic - worth saying so when reporting it.
 
-  The narrower fix is to supersede at INSERT time rather than filter at
-  walk time: when a tab entry arrives for a window, retire any earlier
-  plain window-level entry for that same window, since it can only be a
-  degraded duplicate of what just arrived. Untried.
+## Done
 
-## While dogfooding
+Dates are when it was confirmed working, not when it was written.
 
-Three tab-tracking fixes landed together in 660c952 and want real use
-rather than more tests. What would indicate one of them slipping:
-
-- A tab that is **closed** still offered in the chooser. Reconciliation
-  should retire it on the extension's next connect - the journal line
-  `backnav: <id> reports N live tabs` is that happening.
-- A browser whose **tab switches stop being noticed**, with one stale
-  entry pinned near the top. That is the binding wedge returning.
-  `journalctl --user -u backnav` will show whether a disconnect was
-  announced.
-- A row naming the **wrong application** - the "thunderbird -
-  SnakeoilOS" shape, where a background tab from one browser is stamped
-  with whatever had focus.
-
-Restarting the daemon (`systemctl --user restart backnav`) clears all
-three symptoms, so if a restart fixes it, it was state and not logic -
-worth saying so when reporting it.
+- **2026-08-19** - History is seeded from KWin's window list when the
+  daemon has nothing reachable, so a mid-session restart no longer leaves
+  back/forward doing nothing until you switch windows by hand. Note it
+  cannot help at login on this machine: the session restores no windows,
+  so there is nothing to seed until you open something.
+- **2026-08-19** - A tab entry supersedes the plain window-level fallback
+  for the same window, so one window stops producing two rows.
+- **2026-08-18** - Extensions readied for distribution: icons in all
+  three builds, host permissions removed entirely, versions aligned on
+  0.1, ids pinned. Firefox signed by AMO and installed; Thunderbird
+  installed as an unsigned `.xpi`, which it accepts, so it needs no store
+  at all.
+- **2026-08-18** - Tab URLs are no longer collected. They were sent on
+  every switch and never read, which is why `<all_urls>` could go.
+- **2026-08-17** - `~/.config/backnavrc`, live-reloading, with `DwellMs`
+  and `HoldMs`. Copy `backnavrc.example` to start.
+- **2026-08-17** - The panel is hold-only: taps never show it, holds
+  always do. A hold is detected by the clock rather than by waiting for
+  auto-repeat.
+- **2026-08-17** - Sandbox lessons written into `dev/README.md`.
+- **2026-08-14** - Kate's `openUrl` reopen bug: `restore()` uses
+  `activate(token)`, which switches to a document if it still exists and
+  creates nothing. Closed Kate documents are also pruned from the
+  switcher via `documentClosed`.
 
 ## Unexplained
 
-A stale chooser row ("Chris Scott", 2026-08-12) cleared itself before
-the reconciliation code was running, and nothing accounts for that. The
-only route to `mark_tab_dead` is a `tab_closed` message and nothing
-produces a late one. If an entry vanishes like that again, that is the
-moment worth capturing.
+A stale chooser row ("Chris Scott", 2026-08-12) cleared itself before the
+reconciliation code was running, and nothing accounts for it. The only
+route to `mark_tab_dead` is a `tab_closed` message and nothing produces a
+late one.
+
+Probably moot now - reconciliation, the supersede rule and the
+`onUpdated` guard have each removed a way for stale rows to exist since.
+Left here because the mechanism was never actually identified, so if a
+row vanishes unaccountably again, that is the moment worth capturing.
