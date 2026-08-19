@@ -135,6 +135,23 @@ class HistoryManager:
             item.restore_id is not None and item.restore_id in self._dead_tabs
         )
 
+    def has_live_items(self) -> bool:
+        """
+        Whether anything in history can still be navigated to.
+
+        Not the same as "history is not empty", and the difference is a
+        real failure rather than a nicety. At login KDE focuses
+        ksplashqml and ksmserver-logout-greeter, both of which are normal
+        windows as far as KWin is concerned, so both land in history - and
+        both are gone moments later. A daemon judging itself populated by
+        len(history) would count those corpses and conclude it had no need
+        of KWin's window list, which is exactly backwards: it has nothing
+        reachable at all.
+
+        Used by NavigationEngine.seeded. See seed().
+        """
+        return any(not self._is_dead(item) for item in self._mru)
+
     def mark_window_dead(self, window_id: str):
         self._dead_windows.add(window_id)
 

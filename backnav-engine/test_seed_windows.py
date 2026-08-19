@@ -27,6 +27,7 @@ os.environ["BACKNAV_CONFIG"] = "/nonexistent/backnavrc"
 from core.events.browser_tab_changed import BrowserTabChanged  # noqa: E402
 from core.events.event_bus import EventBus  # noqa: E402
 from core.events.focus_changed import FocusChanged  # noqa: E402
+from core.events.window_closed import WindowClosed  # noqa: E402
 from core.navigation_engine import NavigationEngine  # noqa: E402
 from core.navigator_service import NavigatorService  # noqa: E402
 from core.overlay_controller import OverlayController  # noqa: E402
@@ -73,12 +74,63 @@ assert titles(engine) == ["notes.md", "Brave", "Files"], titles(engine)
 # And back() now works immediately, which is the whole point.
 assert engine.back().title == "Brave"
 
-# ---- seeding happens once --------------------------------------------
+# ---- seeding stops once there is anything to lose --------------------
 
 # A second seed would push stale window-level entries over history the
 # user has built since, undoing their actual navigation.
 engine.seed([{"windowId": "w9", "app": "other", "title": "Later"}])
 assert "Later" not in titles(engine), titles(engine)
+
+# The guard is EMPTY HISTORY, not "have I seeded before". Anything that
+# put an entry there closes the door, whether it was a seed or the user.
+bus, engine = fresh()
+bus.publish(FocusChanged(app="org.kde.kate", window_id="k1", title="notes.md"))
+engine.seed(WINDOWS)
+
+assert titles(engine) == ["notes.md"], titles(engine)
+
+# ---- an EMPTY seed does not count as having been seeded --------------
+
+# The failure this exists for, seen live 2026-08-19. At login the daemon
+# and KWin start together, so the panel answers before the session has
+# opened anything and the list is empty. Under a once-only flag that
+# useless seed blocked every later one, and a freshly booted machine knew
+# only the windows it had watched the user focus by hand.
+bus, engine = fresh()
+engine.seed([])
+
+assert engine.seeded is False, "an empty seed counted as seeded"
+
+# So the offer stands, and the next one with something in it lands.
+engine.seed(WINDOWS)
+assert titles(engine) == ["notes.md", "Brave", "Files"], titles(engine)
+assert engine.seeded is True
+
+# ---- a dead entry does not count as being populated ------------------
+
+# The failure that made a real login look broken, 2026-08-19. KDE focuses
+# ksplashqml (and ksmserver-logout-greeter) while the session starts, and
+# KWin reports both as NORMAL windows, so they land in history like
+# anything else. Moments later they are gone.
+#
+# Guarding on "history is not empty" counted those corpses and concluded
+# the daemon was populated, so the seed never went out - on a machine
+# where nothing was reachable at all. back() returned None while the
+# daemon insisted it had been seeded.
+bus, engine = fresh()
+bus.publish(FocusChanged(app="ksplashqml", window_id="splash", title="splash"))
+
+assert engine.seeded is True, "a live window should count"
+
+bus.publish(WindowClosed(window_id="splash"))
+
+assert engine.back() is None, "nothing should be reachable"
+assert engine.seeded is False, "a dead entry counted as populated"
+
+# ...so the seed still lands, and the corpse is simply outranked by it.
+engine.seed(WINDOWS)
+assert titles(engine)[:3] == ["notes.md", "Brave", "Files"], titles(engine)
+assert engine.back().title == "Brave"
 
 # ---- junk in the list is skipped, not fatal --------------------------
 
@@ -145,8 +197,10 @@ for payload in ('{"windowId": "w1"}', '42', '"a string"', 'null'):
 
 overlay_mock.seed_windows.assert_not_called()
 
-# An empty list is legitimate, not junk: a session with no normal windows
-# open. It must mark the daemon seeded rather than leaving it asking.
+# An empty list is legitimate input, not junk: a session that genuinely
+# has no normal windows open yet. It is accepted and passed on - and the
+# engine then declines to treat it as a seed, so the panel keeps offering
+# (see the empty-seed case above).
 assert raw(svc, "SeedWindows")("[]") == "ok"
 overlay_mock.seed_windows.assert_called_once_with([])
 

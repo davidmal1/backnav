@@ -112,11 +112,6 @@ class NavigationEngine:
         self._current_app = None
         self._current_window_id = None
 
-        # Whether KWin's window list has been folded in at startup - see
-        # seed(). Once only: a second seed would push stale window-level
-        # entries over history the user has since built by hand.
-        self._seeded = False
-
         # (WebSocket connection, browser-native windowId) -> the KWin
         # window it belongs to, learned the first time that browser
         # window is seen focused. Keyed by connection rather than the
@@ -172,10 +167,24 @@ class NavigationEngine:
         Ordered oldest-first by the caller, so the most recently raised
         window ends up at the front where MRU expects it.
         """
-        if self._seeded:
+        # Guarded on history being EMPTY rather than on a "have I seeded
+        # yet" flag, and that distinction is the whole fix.
+        #
+        # A once-only flag seeds at the first opportunity, which at login
+        # is the worst possible moment: the daemon and KWin start
+        # together, so the panel answers before the session has opened
+        # anything. Observed 2026-08-19 - the seed went out, reported
+        # nothing, and the flag then blocked every later attempt, so a
+        # freshly booted session knew only the windows it had watched the
+        # user focus by hand.
+        #
+        # Empty history is the honest condition. It is true at login until
+        # something real exists to seed, so the panel keeps offering and
+        # the first offer with windows in it lands. It goes false the
+        # moment there is anything at all, which is what stops a seed from
+        # ever overwriting navigation the user has actually done.
+        if self._history.has_live_items():
             return
-
-        self._seeded = True
 
         for window in windows:
             window_id = window.get("windowId")
@@ -194,7 +203,18 @@ class NavigationEngine:
 
     @property
     def seeded(self) -> bool:
-        return self._seeded
+        """
+        Whether history holds anything at all, which is what the panel
+        uses to decide whether to offer KWin's window list.
+
+        Not a record of having been seeded: a seed that arrived empty has
+        achieved nothing and must not count. Nor is it "history is not
+        empty" - at login KDE's splash screen takes focus as a normal
+        window and then closes, and a dead entry left behind by it would
+        otherwise be enough to declare the daemon populated. See
+        HistoryManager.has_live_items.
+        """
+        return self._history.has_live_items()
 
     def _on_focus_changed(self, event: FocusChanged):
         # Transient/modal dialogs (an app's "Open File"/"Close Document"

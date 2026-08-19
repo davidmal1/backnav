@@ -234,7 +234,23 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 });
 
 chrome.tabs.onUpdated.addListener((id, changeInfo, tab) => {
-    if (changeInfo.status === "complete")
+    // tab.active is the whole point of this guard, and it was missing.
+    //
+    // Without it every tab that finishes loading reports itself as a
+    // navigation, including ones the user has never looked at. Session
+    // restore is where that becomes obvious: a browser reopening thirty
+    // tabs fires this thirty times, and because the browser window holds
+    // focus throughout, the daemon records every one as somewhere you
+    // had been. Reported 2026-08-19 with a switcher full of pages the
+    // user had never visited.
+    //
+    // The listener still earns its place for the ACTIVE tab. Sites that
+    // navigate without a tab switch - a single-page app changing its
+    // title - produce no onActivated, so this is the only thing that
+    // notices the current tab has become a different page.
+    //
+    // thunderbird/background.js had this right from the start.
+    if (tab.active && changeInfo.status === "complete")
         publish(tab);
 });
 
