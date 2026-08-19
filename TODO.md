@@ -29,45 +29,57 @@ list, not an archive.
   versions, pinned id. See `browser/README.md`, including the note about
   swapping the manifest `key` for the Web Store's on submission day.
 
-- **KMail is a genuine lead, and further along than anything since
-  qpdfview.** Probed 2026-08-19 against a KMail with no account
-  configured, so everything below wants redoing with real mail.
+- **KMail clears all three requirements.** The first application to do so
+  since qpdfview. Proven live 2026-08-19 against a real IMAP account, not
+  reasoned about.
 
-  Against the three requirements in README.md:
+  1. *A signal that a tab changed* - the caption changes per folder and
+     carries a path, e.g. `IMAP Account/Inbox - KMail`.
+  2. *A way to ask which is open now* - `windowTitle` on
+     `/kmail2/kmail_mainwindow_1` returns `IMAP Account/Inbox`. Plain Qt
+     property, the same route Kate uses via `windowFilePath`. **Reads
+     EMPTY when no folder is selected**, which is what made the first
+     pass conclude there was no query at all.
+  3. *A way to switch without creating* - `showFolder(collectionId)`,
+     verified by round trip:
 
-  1. *A signal that a tab changed* - **yes.** The caption changes as you
-     click through folders, and carries the folder path rather than a
-     bare name: KWin saw `Local Folders/templates - KMail`.
-  2. *A way to ask which is open now* - **yes**, and this is the rare
-     one. `windowTitle` on `/kmail2/kmail_mainwindow_1` returns
-     `Local Folders/templates` directly, the same plain-Qt-property route
-     Kate uses via `windowFilePath`. Note it reads EMPTY when no folder
-     is selected, which is what made it look absent on the first pass.
-  3. *A way to switch to a specific one, without creating it* -
-     **unproven, and this is where it is stuck.**
+     ```
+     before             IMAP Account/Inbox
+     showFolder(44)  -> IMAP Account/Sent
+     showFolder(45)  -> IMAP Account/Drafts
+     showFolder(15)  -> IMAP Account/Inbox
+     ```
 
-  `selectFolder(QString)` exists and looks right, but could not be aimed.
-  It returns `true` for everything - including an empty string and
-  `zzzz-nonsense-zzzz` - so the return value carries no information, and
-  feeding back the exact path `windowTitle` had just reported did not
-  restore it. It does *something*: the wrong paths cleared the selection
-  and left `windowTitle` empty. So the format it wants was simply not
-  discovered.
+  Use `showFolder`, NOT `selectFolder`. `selectFolder(QString)` takes a
+  path, cannot be aimed - it returns `true` for an empty string and for
+  `zzzz-nonsense-zzzz` alike, and feeding back the exact path
+  `windowTitle` had just reported did not restore it - and it is not
+  inert, since wrong paths clear the selection. An id also cannot be
+  ambiguous the way a name can, which matters the moment two accounts
+  both have an Inbox.
 
-  The avenue left is `showFolder(QString collectionId)`, which takes an
-  Akonadi collection id rather than a path. Akonadi is queryable over
-  D-Bus, so a path-to-id lookup would give a precise restore - the same
-  shape as qpdfview's fix, which reads that application's own database to
-  turn a caption into a stable identifier.
+  **What is left is the caption-to-id heuristic, and it is qpdfview's
+  problem exactly.** The caption is prettified - `IMAP Account/Inbox` -
+  while Akonadi stores `akonadi_imap_resource_0/INBOX`. Different
+  resource name, different case. qpdfview needed a filename-stem match
+  with the page number as a tie-breaker; this needs the equivalent.
 
-  Blocked on having a real account rather than on ideas. A KMail with no
-  mail has one folder tree and nothing to switch between, so "did the
-  restore land on the right thing" cannot be judged. Worth revisiting
-  when an account is configured.
+  Collection ids come from Akonadi's own SQLite database at
+  `~/.local/share/akonadi/akonadi.db`, `CollectionTable` joined to
+  `ResourceTable` - the same read-the-app's-own-database approach
+  `adapters/qpdfview.py` already takes, including the care needed to read
+  it while the application is writing.
 
-  Worth doing at all only if KMail gets used. Every supported app was
-  verified in daily use, not just probed, and an adapter nobody exercises
-  is the first one that would ship on reasoning alone.
+  Note Akonadi's D-Bus interface was NOT reachable: introspecting
+  `org.freedesktop.Akonadi` is refused by an AppArmor policy on
+  `akonadiserver`. The database route sidesteps that, but anything built
+  on the D-Bus API should expect the same refusal.
+
+  Still gated on whether KMail actually gets used. Every supported app
+  was verified in daily use rather than only probed, and an adapter
+  nobody exercises is the first one that would ship on reasoning alone.
+  Worth knowing before committing: the initial Akonadi sync and indexing
+  is heavy.
 
 ## Worth watching in use
 
