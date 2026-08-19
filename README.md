@@ -146,7 +146,9 @@ qdbus6 | grep -i yourapp
 ```
 
 Nothing back means almost certainly not. Most KDE and Qt applications
-appear here; GTK ones usually do not.
+appear, and so do many GTK ones - appearing here is necessary but says
+nothing about whether the app can answer a useful question, which is what
+steps 2 and 3 are for.
 
 **2. What does it offer?** Using the service name from step 1:
 
@@ -164,12 +166,54 @@ You are looking for two things in that list:
   promising. `open`, `openUrl`, `openInNewTab` are the warning signs,
   because they tend to create rather than switch.
 
-**3. Does the window title change when you switch tabs?** Watch it while
+**3. Check what the promising ones actually take.** A name is not
+enough, and this is where most candidates fail. If the app is GTK you
+will see `org.gtk.Actions` rather than methods of its own, so ask that
+what an action looks like:
+
+```bash
+qdbus6 --literal net.giuspen.cherrytree \
+    /net/giuspen/cherrytree/window/1 \
+    org.gtk.Actions.Describe select_node
+```
+
+That returns a triple of *(enabled, parameter type, state)*. For
+CherryTree, a note-taking app whose action list includes the very
+promising `select_node`, `go_node_next` and `go_node_prev`:
+
+```
+[Argument: (bgav) true, [Signature: ], [Argument: av {}]]
+                         ^^^^^^^^^^^^   ^^^^^^^^^^^^^^^
+                         no parameter   no state
+```
+
+**Empty parameter type** means `select_node` takes no arguments, so it
+cannot mean "select node X" - it acts on wherever the cursor already is.
+`go_node_next` and `go_node_prev` are relative moves with no target.
+**Empty state** means nothing reports which node is current.
+
+So CherryTree fails both of the things step 2 was looking for, despite
+having 217 actions and three that sound exactly right.
+
+**4. Does the window title change when you switch tabs?** Watch it while
 you click between tabs. If the title never changes, there is no signal
 that anything happened, and detection has nowhere to start.
 
-Three yeses means it is very likely supportable. A no on the second is
-usually fatal, and that is the common case. See Okular above.
+Four yeses means it is very likely supportable. A no on the second or
+third is usually fatal, and that is the common case. See Okular above.
+
+### Qt applications are the likely candidates
+
+Every app on the supported list is Qt, and that is not a coincidence.
+Qt's D-Bus adaptors publish properties and methods, so a Qt app tends to
+be able to answer questions about itself. GTK applications expose
+`org.gtk.Actions`, which is a *command* interface: it exists so something
+can trigger a menu entry remotely. It was never meant to answer
+questions, so what you get is a list of everything the menus can do and
+nothing about what the application currently is.
+
+That is a structural difference rather than an oversight, so a GTK app
+being unsupportable is the expected outcome rather than a disappointment.
 
 ### If you want to ask
 
