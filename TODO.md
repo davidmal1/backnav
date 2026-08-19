@@ -29,20 +29,6 @@ list, not an archive.
   versions, pinned id. See `browser/README.md`, including the note about
   swapping the manifest `key` for the Web Store's on submission day.
 
-- **A fresh clone cannot start the daemon.** `websocket_server.run()`
-  calls `load_cert_chain` unconditionally and `backnav-engine/certs/` is
-  gitignored - correctly, it holds a private key - so a new user gets
-  `FileNotFoundError` and no daemon at all.
-
-  It bites everyone, not only Thunderbird users: the TLS listener on 8766
-  exists solely for Thunderbird's HTTPS-Only rewrite, and someone who
-  never installs that extension still cannot start.
-
-  The README documents generating a certificate, which unblocks people.
-  The actual fix is to make the TLS listener optional: if the certs are
-  absent, log one line and serve 8765 only, so a missing cert costs that
-  one feature rather than everything.
-
 ## Worth watching in use
 
 Things that are fixed but whose fix is thin, or that would be quiet if
@@ -77,6 +63,10 @@ they came back.
 
 Dates are when it was confirmed working, not when it was written.
 
+- **2026-08-19** - A missing TLS certificate no longer stops the daemon.
+  The listener on 8766 exists only for Thunderbird, and `certs/` is
+  gitignored, so a fresh clone used to get `FileNotFoundError` and no
+  daemon at all. It now logs one line and serves 8765.
 - **2026-08-19** - History is seeded from KWin's window list when the
   daemon has nothing reachable, so a mid-session restart no longer leaves
   back/forward doing nothing until you switch windows by hand. Note it

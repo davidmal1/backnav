@@ -221,11 +221,19 @@ Then run the daemon. It needs `dbus-next` and `websockets`:
 pip install dbus-next websockets
 ```
 
-It also needs a self-signed certificate, because one of its two
-WebSocket listeners is TLS. Thunderbird's HTTPS-Only Mode rewrites
-`ws://` to `wss://` with no fallback, so that connection has to be
-secure from the start. The daemon will not start without it, even if you
-never use Thunderbird:
+That is enough to run it:
+
+```bash
+python3 backnav-engine/backnav.py
+```
+
+### Only if you use Thunderbird
+
+Thunderbird's HTTPS-Only Mode rewrites `ws://` to `wss://` with no
+fallback, so its extension connects to a second, TLS-only port. That
+listener needs a self-signed certificate, and without one the daemon
+simply logs a line and carries on with the other port. Everything except
+the Thunderbird extension is unaffected.
 
 ```bash
 mkdir -p backnav-engine/certs
@@ -236,14 +244,7 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
 chmod 600 backnav-engine/certs/key.pem
 ```
 
-It is never sent anywhere and secures a socket on your own machine only.
-Then:
-
-```bash
-python3 backnav-engine/backnav.py
-```
-
-To have it start with your session, put this in
+To have the daemon start with your session, put this in
 `~/.config/systemd/user/backnav.service`, adjusting the two paths:
 
 ```ini

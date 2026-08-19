@@ -1,5 +1,7 @@
 import asyncio
+import contextlib
 import json
+import os
 
 from core.events.browser_disconnected import BrowserDisconnected
 from core.events.browser_tab_changed import BrowserTabChanged
@@ -126,9 +128,6 @@ async def activate_tab(connection_id, tab_id):
 
 
 async def run(event_bus):
-    import os
-    import ssl
-
     from websockets.server import serve
 
     handler = _make_handler(event_bus)
@@ -149,14 +148,71 @@ async def run(event_bus):
     # this port directly as wss:// from the start, so nothing ever needs
     # rewriting. Requires accepting the self-signed cert once - see
     # browser/thunderbird/readme.md.
-    cert_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "certs")
-    ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    ssl_context.load_cert_chain(
-        os.path.join(cert_dir, "cert.pem"),
-        os.path.join(cert_dir, "key.pem"),
-    )
-    tls_server = serve(handler, "127.0.0.1", 8766, ssl=ssl_context)
+    # OPTIONAL, and that matters more than it looks. certs/ is gitignored
+    # (it holds a private key), so a fresh clone has no certificate - and
+    # this call used to be unconditional, which meant a new user got a
+    # FileNotFoundError and no daemon at all. Not just no Thunderbird
+    # support: no back/forward, no overlay, nothing, on a machine whose
+    # owner may never install that extension.
+    #
+    # A missing certificate now costs exactly the feature it belongs to.
+    # Everything except the Thunderbird extension speaks plain ws:// on
+    # 8765 and is unaffected.
+    tls_server = _tls_listener(handler)
 
-    async with plain_server, tls_server:
-        print("WebSocket listening on :8765 (ws) and :8766 (wss)")
+    listeners = [plain_server] + ([tls_server] if tls_server else [])
+
+    async with contextlib.AsyncExitStack() as stack:
+        for listener in listeners:
+            await stack.enter_async_context(listener)
+
+        secure = ":8766 (wss)" if tls_server else ":8766 disabled, no certificate"
+        print(f"WebSocket listening on :8765 (ws) and {secure}", flush=True)
+
         await asyncio.Future()
+
+
+def _tls_listener(handler):
+    """
+    The wss:// listener on 8766, or None if it cannot be built.
+
+    Returns None rather than raising, and says why on the way past. The
+    only client that needs this is the Thunderbird extension, whose
+    HTTPS-Only Mode rewrites ws:// to wss:// on the same port with no
+    fallback - so it connects secure from the start rather than being
+    silently rewritten into a port that speaks plain text. See
+    browser/thunderbird/readme.md.
+
+    Generating a certificate is one openssl command, documented in the
+    README. Refusing to start without one punishes every user for a
+    feature most of them are not using.
+    """
+    import ssl
+
+    from websockets.server import serve
+
+    cert_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "certs")
+    cert, key = os.path.join(cert_dir, "cert.pem"), os.path.join(cert_dir, "key.pem")
+
+    try:
+        ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ssl_context.load_cert_chain(cert, key)
+    except OSError as error:
+        # OSError alone is the whole set. It covers the missing file, the
+        # unreadable one and the wrong permissions - and ssl.SSLError,
+        # raised by a file that exists and is not a usable certificate,
+        # is a SUBCLASS of OSError rather than a sibling.
+        #
+        # This was written as `except (OSError, ssl.SSLError)` and the
+        # redundancy was caught by mutation testing: dropping SSLError
+        # from the tuple changed no behaviour and no test noticed,
+        # because there was nothing to notice.
+        print(
+            f"backnav: no TLS certificate ({error}) - port 8766 disabled, "
+            f"so the Thunderbird extension cannot connect. "
+            f"Everything else is unaffected. See README.md to generate one.",
+            flush=True,
+        )
+        return None
+
+    return serve(handler, "127.0.0.1", 8766, ssl=ssl_context)
