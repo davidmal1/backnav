@@ -11,32 +11,24 @@ For KDE Plasma on Wayland.
 
 ## The problem
 
-Alt+Tab has "Tab" in its name and does not understand tabs.
-
-That is not a joke at its expense. It is a date stamp. Alt+Tab has
-switched *windows* since Windows 3.x, around 1990, where "Tab" meant the
-key you pressed and nothing more. It was exactly the right design then:
-one window really was one thing you were doing.
+Alt+Tab has switched *windows* since Windows 3.x, around 1990. It was
+exactly the right design then: one window really was one thing you were
+doing.
 
 Tabs did not exist yet. Browsers would not popularise them for another
 decade, and it would be years after that before working in a dozen tabs
 at once became normal. Alt+Tab is a solution from before the problem, and
 it has never been updated to notice.
 
-So it still switches windows. But a browser with thirty tabs open is
-one window. A Konsole with six sessions is one window. When you Alt+Tab
-"back to what I was doing", you land on the right *application* and then
-have to find the right tab inside it yourself. That second step is
-manual, easy to get wrong, and the part Alt+Tab was never designed to
-help with, because in 1990 there was nothing there to help with.
+The problem is that a browser with thirty tabs open is one window. A
+Konsole with six sessions is one window.
 
-Meanwhile the thing you actually wanted was simple: **take me back to
-where I just was.** Not to a window. To the tab, the terminal session,
-the document.
+Consider working on Tab-1, then Tab-2, then wanting to go back to Tab-1.
+When you Alt+Tab "back to what I was last doing", you land on an entirely
+different application, because Alt+Tab has no concept of tabs.
 
-BackNav does that. It keeps a most-recently-used trail across windows
-*and* the tabs inside them, and gives you a shortcut to walk back along
-it.
+BackNav keeps a most-recently-used trail across windows *and* the tabs
+inside them, and gives you a shortcut to walk back along it.
 
 ## How it feels
 
@@ -51,7 +43,8 @@ Tap to act, hold to look.
 
 Holding shows a list of where you have been, most recent first, with app
 icons and titles. Keep tapping to move down it, or let go and use the
-arrow keys. Enter confirms; Escape puts you back where you started.
+arrow keys. Enter or a mouse click confirms; Escape puts you back where you
+started.
 
 If that sounds like Alt+Tab, it is meant to. The ordering is
 most-recently-used, not a browser's back/forward stack: going somewhere
@@ -65,13 +58,13 @@ switching between a handful of things all day.
 
 | | what BackNav restores |
 | --- | --- |
-| **Any window** | Raised and focused, like Alt+Tab |
 | **Chrome, Brave, Vivaldi, Edge, Chromium** | The individual tab |
 | **Firefox** | The individual tab |
 | **Thunderbird** | The individual mail or message tab |
 | **Konsole** | The individual session (tab) |
 | **Kate** | The individual document (tab) |
 | **qpdfview** | The individual document (tab) |
+| **Any window** | Raised and focused, like Alt+Tab |
 
 Everything else still works at the window level. Nothing needs to be on
 this list for BackNav to be useful. The list is about how *deep* it can
@@ -90,16 +83,10 @@ deliberately; it will not already be there.
 
 Yes. Binding BackNav to Alt+Tab itself is a reasonable thing to do.
 
-It knows about every window, not only the ones you have visited: at
-startup the daemon has no history at all, so it asks the panel for KWin's
-window list and folds it in. Without that, back/forward did nothing
-whatsoever after a daemon restart until you had switched between two
-windows by hand. That is survivable for a second switcher and useless for
-your only one.
-
-The one case left is the daemon not running, where BackNav does nothing
-because the KWin script deliberately holds no logic of its own. If that
-worries you, keep Alt+Tab on a second binding as a way back to a terminal.
+Two things to know. It learns windows as you focus them, so a window you
+have never once visited is not in the list. And if the daemon is not
+running BackNav does nothing, because the KWin script holds no logic of
+its own.
 
 ## Why the browsers need an extension
 
@@ -297,8 +284,8 @@ gesture, and `HoldMs`, how long a hold takes to summon the panel.
 ## Status
 
 Working, and in daily use by its author, which is where most of its bug
-reports come from. Expect rough edges around applications not on the list
-above.
+reports come from. Non-supported applications will behave like traditional
+Alt+Tab.
 
 [`TODO.md`](TODO.md) is the honest list of what is outstanding, what is
 known-broken, and what has been deliberately left alone.
