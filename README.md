@@ -27,8 +27,23 @@ Consider working on Tab-1, then Tab-2, then wanting to go back to Tab-1.
 When you Alt+Tab "back to what I was last doing", you land on an entirely
 different application, because Alt+Tab has no concept of tabs.
 
+Ctrl+Tab is not the answer either. It only ever moves within one
+application, so it cannot take you back to something in a different one.
+It is not universal - each application picks its own key, and plenty
+offer nothing. And where it does exist it usually steps through tabs in
+*order* rather than by recency, so it answers "the next tab along", which
+is a different question from "where was I".
+
+Between them, then, you are asked to work out where you are going before
+you can choose how to get there: inside this application or outside it,
+one key or the other, and the wrong guess takes you somewhere unrelated.
+That is a question you should never have to answer, because you already
+know the answer in the only form that matters - you remember the thing,
+not which window contains it.
+
 BackNav keeps a most-recently-used trail across windows *and* the tabs
-inside them, and gives you a shortcut to walk back along it.
+inside them, and gives you one shortcut to walk back along it, whichever
+side of an application boundary the last thing happens to be.
 
 ## How it feels
 
