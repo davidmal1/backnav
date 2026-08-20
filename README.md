@@ -221,6 +221,16 @@ That is enough to run it:
 python3 backnav-engine/backnav.py
 ```
 
+### Installing the browser extensions
+
+For tab-level navigation in a browser, install the matching extension
+from `browser/`. Each directory has its own readme;
+[`browser/README.md`](browser/README.md) explains which build covers
+which browser.
+
+Without one, that browser still works at the window level - you just get
+one entry for the whole browser rather than one per tab.
+
 ### Only if you use Thunderbird
 
 Thunderbird's HTTPS-Only Mode rewrites `ws://` to `wss://` with no
@@ -238,8 +248,10 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
 chmod 600 backnav-engine/certs/key.pem
 ```
 
-To have the daemon start with your session, put this in
-`~/.config/systemd/user/backnav.service`, adjusting the two paths:
+### Starting it with your session
+
+Put this in `~/.config/systemd/user/backnav.service`, adjusting the two
+paths:
 
 ```ini
 [Unit]
@@ -261,11 +273,6 @@ WantedBy=graphical-session.target
 systemctl --user enable --now backnav
 journalctl --user -u backnav -f     # what it is seeing
 ```
-
-For tab-level navigation in a browser, install the matching extension
-from `browser/`. Each directory has its own readme;
-[`browser/README.md`](browser/README.md) explains which build covers
-which browser.
 
 ## Configuring
 
