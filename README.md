@@ -30,9 +30,10 @@ different application, because Alt+Tab has no concept of tabs.
 Ctrl+Tab is not the answer either. It only ever moves within one
 application, so it cannot take you back to something in a different one.
 It is not universal - each application picks its own key, and plenty
-offer nothing. And where it does exist it usually steps through tabs in
-*order* rather than by recency, so it answers "the next tab along", which
-is a different question from "where was I".
+offer nothing. And what it does varies between applications: some cycle
+by recency, some step through in order, some pop up a chooser. Even where
+the key works, what happens next is not something you can rely on
+knowing.
 
 Between them, then, you are asked to work out where you are going before
 you can choose how to get there: inside this application or outside it,
