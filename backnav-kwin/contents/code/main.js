@@ -38,7 +38,7 @@ function emitEvent(window)
 // apps change their title for reasons that have nothing to do with tabs
 // (unsaved-file markers, running commands, media titles), and the daemon
 // has no way to resolve or restore those anyway.
-const TABBED_APPS = new Set(["org.kde.konsole", "org.kde.kate", "qpdfview.local.qpdfview"]);
+const TABBED_APPS = new Set(["org.kde.konsole", "org.kde.kate", "qpdfview.local.qpdfview", "kitty"]);
 
 function emitCaptionChanged(window)
 {

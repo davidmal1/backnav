@@ -64,6 +64,7 @@ switching between a handful of things all day.
 | **Konsole** | The individual session (tab) |
 | **Kate** | The individual document (tab) |
 | **qpdfview** | The individual document (tab) |
+| **kitty** | The individual tab |
 | **Any window** | Raised and focused, like Alt+Tab |
 
 Everything else still works at the window level. Nothing needs to be on
@@ -151,7 +152,10 @@ sandbox. What the sandbox does guarantee is that it cannot see inside any
 page.
 
 Konsole, Kate and qpdfview need no extension, because KDE applications
-already expose enough over D-Bus to ask them directly.
+already expose enough over D-Bus to ask them directly. kitty needs none
+either, though it is not a KDE application and speaks no D-Bus at all -
+it has its own remote-control protocol, which is richer than most of the
+D-Bus interfaces here.
 
 ## Why some apps can't be supported
 
@@ -241,6 +245,26 @@ which browser.
 
 Without one, that browser still works at the window level - you just get
 one entry for the whole browser rather than one per tab.
+
+### Only if you use kitty
+
+kitty ships with remote control off, and without it BackNav can see the
+window but not the tabs inside it. One line in `~/.config/kitty/kitty.conf`,
+then restart kitty:
+
+```
+allow_remote_control yes
+```
+
+Be aware of what that grants: anything able to reach kitty's socket can
+run commands in your terminal and read its text, which is more than
+BackNav needs. kitty offers narrower modes - `socket-only` and a
+password-protected form - and they are worth preferring if you are
+comfortable configuring them.
+
+qpdfview needs a comparable one-time setting: "Restore tabs" under
+Preferences -> Behavior, without which it never writes the database this
+reads.
 
 ### Only if you use Thunderbird
 

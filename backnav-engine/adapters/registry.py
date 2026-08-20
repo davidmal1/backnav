@@ -1,4 +1,5 @@
 from adapters.kate import KateAdapter
+from adapters.kitty import KittyAdapter
 from adapters.konsole import KonsoleAdapter
 from adapters.qpdfview import QpdfviewAdapter
 
@@ -7,7 +8,7 @@ from adapters.qpdfview import QpdfviewAdapter
 # recording history) and NavigatorService (which needs to restore a
 # previously-resolved tab by its restore_type when acting on a back/forward
 # request), without either of those knowing about the other's lookup.
-_ADAPTERS = (KonsoleAdapter(), KateAdapter(), QpdfviewAdapter())
+_ADAPTERS = (KonsoleAdapter(), KateAdapter(), QpdfviewAdapter(), KittyAdapter())
 
 ADAPTERS_BY_APP = {adapter.app_name: adapter for adapter in _ADAPTERS}
 ADAPTERS_BY_RESTORE_TYPE = {adapter.restore_type: adapter for adapter in _ADAPTERS}
