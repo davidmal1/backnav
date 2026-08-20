@@ -280,8 +280,14 @@ Optional. Copy [`backnavrc.example`](backnavrc.example) to
 `~/.config/backnavrc` and edit. Changes take effect on the next gesture,
 with nothing to restart.
 
-Two settings, both matters of feel: `DwellMs`, how long a pause ends a
-gesture, and `HoldMs`, how long a hold takes to summon the panel.
+Two settings, both matters of feel rather than correctness:
+
+- **`DwellMs`** - how long a pause ends a gesture. Too short and a
+  deliberate multi-tap walk gets split into separate ones; too long and
+  a quick bounce between two windows feels like it lags before settling.
+- **`HoldMs`** - how long you must hold before the panel appears. Lower
+  it if summoning it feels sluggish; raise it if an ordinary tap
+  sometimes flashes the panel at you.
 
 ## Status
 
