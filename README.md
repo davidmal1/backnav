@@ -88,12 +88,13 @@ have never once visited is not in the list. And if the daemon is not
 running BackNav does nothing, because the KWin script holds no logic of
 its own.
 
-Both shortcuts live under **System Settings -> Keyboard -> Shortcuts**,
+The shortcuts live under **System Settings -> Keyboard -> Shortcuts**,
 where BackNav registers them under the **KWin** component. Search for
 `BackNav` and you will find *BackNav: Navigate Back* and *BackNav:
 Navigate Forward*.
 
-Pick the combination you want and press it into the field. Something
+Pick the combination you want for **Navigate Back** and press it into
+the field. Something
 uncontested like **Meta+Tab** just works. **Alt+Tab** is already KWin's
 own *Walk Through Windows*, so KDE will warn about the conflict and offer
 to reassign - accepting takes Alt+Tab away from the built-in switcher and
@@ -101,6 +102,26 @@ gives it to BackNav, which is the point.
 
 If you later want the old behaviour back, *Walk Through Windows* has a
 "reset to default" button, so nothing here is one-way.
+
+### Navigate Forward is optional
+
+Bind it only if it suits how you work. It does exactly one thing: undo an
+overshoot while a walk is still open. Outside a walk it does nothing at
+all, so it is not a browser's forward button despite the name - it is
+`Alt+Shift+Tab`.
+
+That is worth having if you tap quickly and sometimes go one too far.
+Without it the recovery is clumsy: let the gesture settle, and the entry
+you overshot onto is now the most recent, so getting where you meant
+takes two taps in the other direction.
+
+If you do bind it, make it the **shifted variant of Navigate Back** -
+`Meta+Shift+Tab` alongside `Meta+Tab`, or `Alt+Shift+Tab` alongside
+`Alt+Tab`. The entire value is correcting mid-gesture without moving your
+hand, which a key somewhere else cannot offer.
+
+And if you never overshoot, leave it unbound. Nothing breaks: the action
+is registered either way, and an unbound one is simply inert.
 
 ## Why the browsers need an extension
 
@@ -182,8 +203,11 @@ kpackagetool6 --type KWin/Script -i backnav-kwin-overlay
 ```
 
 Enable both in **System Settings → Window Management → KWin Scripts**,
-then bind the two shortcuts under **Shortcuts → KWin**: *BackNav:
-Navigate Back* and *BackNav: Navigate Forward*.
+then bind *BackNav: Navigate Back* under **Shortcuts → KWin**. That one
+shortcut is the whole interface.
+
+There is a second action, *BackNav: Navigate Forward*, which is entirely
+optional - see below. Leaving it unbound costs nothing.
 
 Then run the daemon. It needs `dbus-next` and `websockets`:
 
