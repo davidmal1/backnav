@@ -70,9 +70,32 @@ list, not an archive.
      SHAs. Low risk - the repo has only ever been private with no forks,
      so nobody has ever held those SHAs - and this is the last moment it
      stays that way.
-  3. Nothing in the README needs changing. "Open an issue" already links
-     to the issues tab and Issues are enabled, so the invitation becomes
-     true on the visibility flip.
+  3. Cut a `v0.2` release and attach the signed Firefox `.xpi`, which is
+     already built and verified at
+     `browser/backnav-firefox-0.2-signed.xpi` - AMO-signed 2026-08-21,
+     confirmed byte-identical to the reviewed code, installed and
+     working.
+
+     **Attach it as `backnav-firefox-0.2.xpi`, without the `-signed`.**
+     The local name only distinguishes it from the unsigned build sitting
+     beside it; `firefox/updates.json` already points at
+     `/releases/download/v0.2/backnav-firefox-0.2.xpi` and the two must
+     match exactly. Getting it wrong FAILS SILENTLY - Firefox finds no
+     update and says nothing, and nothing in the repo checks it.
+
+  4. Then the root README: replace "Firefox has no install route yet"
+     with the release link. It is the only supported browser a new user
+     currently cannot install, so that paragraph is the last thing making
+     the three unequal.
+
+  5. Nothing else in the README needs changing. "Open an issue" already
+     links to the issues tab and Issues are enabled, so the invitation
+     becomes true on the visibility flip.
+
+  Note `update_url` only resolves once the repo is public - it is served
+  from `raw.githubusercontent.com` off `main`. Until then Firefox update
+  checks fail quietly, which is correct for a build nobody else has, but
+  it does mean steps 1 and 3 cannot be tested out of order.
 
   One trap outside this repo: the identity fix is `--local`, deliberately,
   since changing the global would have affected every unrelated repo. The
