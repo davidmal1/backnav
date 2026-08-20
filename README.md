@@ -254,12 +254,51 @@ python3 backnav-engine/backnav.py
 ### Installing the browser extensions
 
 For tab-level navigation in a browser, install the matching extension
-from `browser/`. Each directory has its own readme;
-[`browser/README.md`](browser/README.md) explains which build covers
-which browser.
+from `browser/`. Without one, that browser still works at the window
+level - you just get one entry for the whole browser rather than one per
+tab.
 
-Without one, that browser still works at the window level - you just get
-one entry for the whole browser rather than one per tab.
+The three builds install three different ways, and only the first is
+ready to use as it sits in the repository.
+
+**Chrome, Brave and Vivaldi** load the directory directly. Go to
+`chrome://extensions`, turn on **Developer Mode**, choose **Load
+unpacked** and select `browser/chromium/`. Nothing to build. The
+extension id is pinned by the `key` field in its manifest, so it stays
+the same wherever you load it from - which is what keeps BackNav's tab
+bindings intact if you ever move the folder.
+
+**Thunderbird** installs from an `.xpi`, and the `.xpi` is a build
+artifact that is deliberately not committed, so build it first:
+
+```bash
+cd /path/to/backnav/browser
+
+./build-xpi.sh thunderbird
+```
+
+Then in Thunderbird: **Add-ons and Themes** -> the gear icon ->
+**Install Add-on From File**, and pick the `.xpi` the script printed.
+Thunderbird accepts unsigned add-ons, so that is the whole procedure, and
+it survives restarts.
+
+**Firefox has no install route yet.** Release Firefox compiles signature
+enforcement in and ignores the preference that would turn it off, so a
+locally built `.xpi` is refused - `build-xpi.sh firefox` produces
+something you can validate, not something you can install. Only an
+AMO-signed copy will install, and none is published, so **Firefox
+currently works at the window level only**, like a browser with no
+extension at all.
+
+Changing that needs an upload to AMO, which signs it: either a public
+listing, or self-distribution, which hands back a signed `.xpi` to host
+anywhere. Nothing in the extension needs to change for either -
+[`browser/README.md`](browser/README.md) covers both routes.
+
+Each build directory has its own readme with the detail, including
+Thunderbird's one-time certificate exception, which it needs and the
+browsers do not. [`browser/README.md`](browser/README.md) explains which
+build covers which browser and why the Gecko two differ.
 
 ### Only if you use kitty
 
