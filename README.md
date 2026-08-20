@@ -61,7 +61,7 @@ switching between a handful of things all day.
 | **Chrome, Brave, Vivaldi, Edge, Chromium** | The individual tab |
 | **Firefox** | The individual tab |
 | **Thunderbird** | The individual mail or message tab |
-| **Konsole** | The individual session (tab) |
+| **Konsole** | The individual tab |
 | **Kate** | The individual document (tab) |
 | **qpdfview** | The individual document (tab) |
 | **kitty** | The individual tab |
