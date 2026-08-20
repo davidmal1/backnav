@@ -33,7 +33,7 @@ It is not universal - each application picks its own key, and plenty
 offer nothing. And what it does varies between applications: some cycle
 by recency, some step through in order, some pop up a chooser. Even where
 the key works, what happens next is not something you can rely on
-knowing.
+knowing. Consistency is king.
 
 Between them, then, you are asked to work out where you are going before
 you can choose how to get there: inside this application or outside it,
