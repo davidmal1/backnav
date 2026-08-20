@@ -108,14 +108,16 @@ These are gaps in this repo, not in the process.
   description of this extension is "reads tab titles, sends them to a
   daemon on localhost".
 
-- ~~**Versions disagree.**~~ **Done 2026-08-18:** all three are `0.1`.
+- ~~**Versions disagree.**~~ **Done 2026-08-18:** all three aligned.
+  **Now `0.2`**, bumped together on 2026-08-21 to carry the Firefox
+  `update_url` below.
 
   Worth knowing before the first submission: a store will not accept the
   same version twice, and versions may only go up. So `0.1` is spent the
   moment anything is uploaded, even a submission that is then rejected -
   the next attempt has to be `0.2` or `0.1.1`. Bump all three together
   regardless of which build changed, so a single number always describes
-  the whole set.
+  the whole set. `0.1` is genuinely spent: it was uploaded and signed.
 
 - ~~**`backnav@local` is a placeholder id.**~~ **Settled 2026-08-18:**
   both Gecko builds now use `backnav@davidmal1.github.io`.
@@ -173,6 +175,47 @@ the build that actually needs AMO, whether listed or self-distributed.
 Checking the pref file is not enough to tell these two apart - only
 installing one is.
 
+## Updates, and what `update_url` costs
+
+Added to the Firefox build on 2026-08-21, pointing at
+[`firefox/updates.json`](firefox/updates.json) served from
+`raw.githubusercontent.com`.
+
+A self-distributed `.xpi` has no store behind it, so **without
+`update_url` it never updates** - every user reinstalls by hand, forever.
+Worse, it cannot be retrofitted: a copy already installed without the
+field will not start checking because a later version has it. So it has
+to be in the first build anyone installs, which is why it went in before
+publishing rather than after.
+
+**It also closes a door.** `update_url` is refused for Mozilla-hosted
+add-ons, so as long as it is in the manifest, a public AMO listing is not
+available - the linter rejects the upload. Self-distribution is now the
+committed route for Firefox, and going listed later means removing the
+field and bumping the version again.
+
+**Signed and installed 2026-08-21**, and the upgrade behaved: 0.2 was
+installed over a signed 0.1 without removing it first, replaced it rather
+than sitting alongside, and kept `storage.local` - so the `instanceId`
+the daemon binds tabs to survived, and Firefox tabs still showed as
+separate rows immediately afterwards, with no daemon restart.
+
+That is the id doing its job, and it is worth not removing the old
+version first: an uninstall takes `storage.local` with it, and the
+reinstall then mints a fresh `instanceId` - which is the re-bind bug from
+660c952, self-inflicted.
+
+Two things have to stay in step with every release, and nothing checks
+them:
+
+- `updates.json` names a version and a download link. Both must match the
+  signed `.xpi` actually attached to the release, or Firefox either sees
+  no update or 404s fetching it.
+- The link points at a GitHub release asset. **It resolves only once the
+  repository is public and that release exists** - until then update
+  checks fail quietly, which is the correct behaviour for a build nobody
+  else has.
+
 ## Validating before you upload
 
 AMO runs Mozilla's `addons-linter` on submission. Run it yourself first -
@@ -181,7 +224,19 @@ rejections:
 
 ```
 ./build-xpi.sh firefox
-npx --yes addons-linter@latest backnav-firefox-0.1.xpi
+npx --yes addons-linter@latest --self-hosted backnav-firefox-0.2.xpi
+```
+
+**`--self-hosted` is required for the Firefox build and wrong for the
+Thunderbird one.** Without it the linter reports one error,
+`MANIFEST_UPDATE_URL`, because `update_url` is forbidden for
+Mozilla-hosted add-ons and mandatory for self-distributed ones - the flag
+is how you tell it which you are uploading. Thunderbird carries no
+`update_url`, so it lints with no flag:
+
+```
+./build-xpi.sh thunderbird
+npx --yes addons-linter@latest backnav-thunderbird-0.2.xpi
 ```
 
 Both Gecko builds are currently **0 errors, 0 warnings, 0 notices**. Two

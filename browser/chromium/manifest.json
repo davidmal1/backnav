@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "BackNav",
-  "version": "0.1",
+  "version": "0.2",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArW5lr8j4K53jnQLSOl12erL32NQ9syWsglLZ8Rd4dDITqhJG0gz4BC/fjDYwfUkufDBxAv6eqjxu4LJrib3MD08nzeupeU0H69qVmuF+sKMg4o+vFK9MYbbfUNgheuYARN+AK7p5EnqbWvUZzNrnOmKVhdnWcpZwnwe4eW+yMiBFG5Rfe8eCZ3YdqR7yH0ROSlAOiirR7x2u6b4wqQqBKkhmngN/JRZWA4hBhAeb8SiU6TsS+MCCIIoYe6YBR97Wp+XRl9XQen0vj3wndtfVW+gc+U01ev+Krs98UHF4tO5/YCeFRl+uyBNG+YG4t/en8V8atASg8gjZfAysTrgixQIDAQAB",
   "description": "Provides BackNav with active browser tab information.",
   "icons": {

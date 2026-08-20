@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "BackNav for Thunderbird",
-  "version": "0.1",
+  "version": "0.2",
   "description": "Reports Thunderbird tab activity to the BackNav navigation daemon, so BackNav's back/forward shortcuts can restore a specific mail tab or message tab.",
   "icons": {
     "16": "icons/icon-16.png",

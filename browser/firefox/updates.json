@@ -1,0 +1,12 @@
+{
+  "addons": {
+    "backnav@davidmal1.github.io": {
+      "updates": [
+        {
+          "version": "0.2",
+          "update_link": "https://github.com/davidmal1/backnav/releases/download/v0.2/backnav-firefox-0.2.xpi"
+        }
+      ]
+    }
+  }
+}
