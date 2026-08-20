@@ -135,9 +135,20 @@ The only thing that knows which tab is active is the browser itself.
 The extensions are a small bridge: they tell the daemon which tab is
 frontmost, and switch tabs when asked. They connect to a WebSocket on
 `127.0.0.1` and that is the whole of it. **They send tab titles and
-nothing else**. No URLs, no page content, no history. Every build
-requests only the `tabs`, `storage` and `alarms` permissions, with no
-host permissions at all.
+nothing else** - no URLs, no page content, no history.
+
+They ask for no host permissions, which is the part worth caring about.
+Host permissions are what let an extension read page content, inject
+scripts or watch network requests, and an extension without them cannot
+do those things whatever its code says.
+
+Tab access is not nothing, though, and it would be misleading to present
+it as harmless. Chrome describes it to users in terms of browsing
+history, because tab titles and URLs reveal where you have been. BackNav
+reads titles and does not send URLs - but the permission would allow it,
+so you are trusting the code on that point rather than the browser's
+sandbox. What the sandbox does guarantee is that it cannot see inside any
+page.
 
 Konsole, Kate and qpdfview need no extension, because KDE applications
 already expose enough over D-Bus to ask them directly.
