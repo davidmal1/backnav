@@ -150,6 +150,31 @@ appear, and so do many GTK ones - appearing here is necessary but says
 nothing about whether the app can answer a useful question, which is what
 steps 2 and 3 are for.
 
+If you want to be certain the grep did not just miss an oddly named
+service, ask which bus names the process actually owns:
+
+```bash
+gdbus call --session --dest org.freedesktop.DBus \
+    --object-path /org/freedesktop/DBus \
+    --method org.freedesktop.DBus.GetConnectionUnixProcessID NAME
+```
+
+...for each name from `qdbus6`, and compare against the app's pid. An app
+owning none is conclusive.
+
+**How the app was packaged can decide this on its own.** Snap and Flatpak
+run under confinement, and owning an arbitrary session-bus name is the
+sort of thing confinement blocks - so a packaged build can be silent on
+the bus even where the same application, installed natively, would not
+be. WPS Office was the case that prompted this note: the snap owns no bus
+name at all, and no amount of probing gets past that.
+
+It cuts the other way too. Akonadi, which KMail relies on, refuses D-Bus
+introspection from unconfined callers under an AppArmor policy of its
+own, so the route there was to read its database instead. If an app
+plainly ought to expose something and does not, packaging or policy is
+worth suspecting before the application itself.
+
 **2. What does it offer?** Using the service name from step 1:
 
 ```bash
