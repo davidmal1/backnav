@@ -337,9 +337,15 @@ journalctl --user -u backnav -f     # what it is seeing
 
 ## Configuring
 
-Optional. Copy [`backnavrc.example`](backnavrc.example) to
-`~/.config/backnavrc` and edit. Changes take effect on the next gesture,
-with nothing to restart.
+Optional. Copy [`backnavrc.example`](backnavrc.example) from the
+repository into place and edit it:
+
+```bash
+cp /path/to/backnav/backnavrc.example ~/.config/backnavrc
+```
+
+Changes take effect on the next gesture, with nothing to restart - the
+file is re-read when it changes rather than watched or reloaded.
 
 Two settings, both matters of feel rather than correctness:
 
