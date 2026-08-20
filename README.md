@@ -88,6 +88,20 @@ have never once visited is not in the list. And if the daemon is not
 running BackNav does nothing, because the KWin script holds no logic of
 its own.
 
+Both shortcuts live under **System Settings -> Keyboard -> Shortcuts**,
+where BackNav registers them under the **KWin** component. Search for
+`BackNav` and you will find *BackNav: Navigate Back* and *BackNav:
+Navigate Forward*.
+
+Pick the combination you want and press it into the field. Something
+uncontested like **Meta+Tab** just works. **Alt+Tab** is already KWin's
+own *Walk Through Windows*, so KDE will warn about the conflict and offer
+to reassign - accepting takes Alt+Tab away from the built-in switcher and
+gives it to BackNav, which is the point.
+
+If you later want the old behaviour back, *Walk Through Windows* has a
+"reset to default" button, so nothing here is one-way.
+
 ## Why the browsers need an extension
 
 A browser tab is not a window. It has no entry in the compositor, no
@@ -138,6 +152,121 @@ applications simply do not.
 
 Maybe, and you can find out in about five minutes without knowing any of
 this codebase. The answer lives in the application, not in BackNav.
+
+The procedure is at the end of this page, under
+[Probing an application](#probing-an-application), along with what to
+send if you want to open an issue.
+
+## How it fits together
+
+Three pieces, because the information lives in three places:
+
+- **`backnav-kwin/`**, a KWin script. The only thing that can see window
+  focus changes, and the only thing that can raise a window on Wayland.
+- **`backnav-engine/`**, a Python daemon. Keeps the history, decides
+  where "back" goes, talks to applications over D-Bus.
+- **`browser/`**, WebExtensions for the browsers and Thunderbird, since
+  tabs are invisible from outside.
+- **`backnav-kwin-overlay/`**, the switcher panel, as a QML KWin script.
+
+## Installing
+
+Requires KDE Plasma 6 on Wayland, and Python 3.
+
+```bash
+git clone https://github.com/davidmal1/backnav.git
+cd backnav
+
+kpackagetool6 --type KWin/Script -i backnav-kwin
+kpackagetool6 --type KWin/Script -i backnav-kwin-overlay
+```
+
+Enable both in **System Settings → Window Management → KWin Scripts**,
+then bind the two shortcuts under **Shortcuts → KWin**: *BackNav:
+Navigate Back* and *BackNav: Navigate Forward*.
+
+Then run the daemon. It needs `dbus-next` and `websockets`:
+
+```bash
+pip install dbus-next websockets
+```
+
+That is enough to run it:
+
+```bash
+python3 backnav-engine/backnav.py
+```
+
+### Only if you use Thunderbird
+
+Thunderbird's HTTPS-Only Mode rewrites `ws://` to `wss://` with no
+fallback, so its extension connects to a second, TLS-only port. That
+listener needs a self-signed certificate, and without one the daemon
+simply logs a line and carries on with the other port. Everything except
+the Thunderbird extension is unaffected.
+
+```bash
+mkdir -p backnav-engine/certs
+openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
+    -keyout backnav-engine/certs/key.pem \
+    -out backnav-engine/certs/cert.pem \
+    -subj "/CN=127.0.0.1" -addext "subjectAltName=IP:127.0.0.1"
+chmod 600 backnav-engine/certs/key.pem
+```
+
+To have the daemon start with your session, put this in
+`~/.config/systemd/user/backnav.service`, adjusting the two paths:
+
+```ini
+[Unit]
+Description=BackNav navigation daemon
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+ExecStart=/usr/bin/python3 /path/to/backnav/backnav-engine/backnav.py
+WorkingDirectory=/path/to/backnav/backnav-engine
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target
+```
+
+```bash
+systemctl --user enable --now backnav
+journalctl --user -u backnav -f     # what it is seeing
+```
+
+For tab-level navigation in a browser, install the matching extension
+from `browser/`. Each directory has its own readme;
+[`browser/README.md`](browser/README.md) explains which build covers
+which browser.
+
+## Configuring
+
+Optional. Copy [`backnavrc.example`](backnavrc.example) to
+`~/.config/backnavrc` and edit. Changes take effect on the next gesture,
+with nothing to restart.
+
+Two settings, both matters of feel: `DwellMs`, how long a pause ends a
+gesture, and `HoldMs`, how long a hold takes to summon the panel.
+
+## Status
+
+Working, and in daily use by its author, which is where most of its bug
+reports come from. Non-supported applications will behave like traditional
+Alt+Tab.
+
+[`TODO.md`](TODO.md) is the honest list of what is outstanding, what is
+known-broken, and what has been deliberately left alone.
+
+## Probing an application
+
+How to tell whether an application can be supported, without knowing
+anything about this codebase. Every app on the supported list was worked
+out this way, and every step below exists because some app defeated the
+previous version of it.
 
 **1. Does it expose D-Bus at all?** With the app running:
 
@@ -255,107 +384,3 @@ because a non-creating `activate(token)` happens to be there. qpdfview
 needed its own database read plus a caption heuristic. So the honest
 expectation is that support is possible when the application cooperates,
 and that many do not.
-
-## How it fits together
-
-Three pieces, because the information lives in three places:
-
-- **`backnav-kwin/`**, a KWin script. The only thing that can see window
-  focus changes, and the only thing that can raise a window on Wayland.
-- **`backnav-engine/`**, a Python daemon. Keeps the history, decides
-  where "back" goes, talks to applications over D-Bus.
-- **`browser/`**, WebExtensions for the browsers and Thunderbird, since
-  tabs are invisible from outside.
-- **`backnav-kwin-overlay/`**, the switcher panel, as a QML KWin script.
-
-## Installing
-
-Requires KDE Plasma 6 on Wayland, and Python 3.
-
-```bash
-git clone https://github.com/davidmal1/backnav.git
-cd backnav
-
-kpackagetool6 --type KWin/Script -i backnav-kwin
-kpackagetool6 --type KWin/Script -i backnav-kwin-overlay
-```
-
-Enable both in **System Settings → Window Management → KWin Scripts**,
-then bind the two shortcuts under **Shortcuts → KWin**: *BackNav:
-Navigate Back* and *BackNav: Navigate Forward*.
-
-Then run the daemon. It needs `dbus-next` and `websockets`:
-
-```bash
-pip install dbus-next websockets
-```
-
-That is enough to run it:
-
-```bash
-python3 backnav-engine/backnav.py
-```
-
-### Only if you use Thunderbird
-
-Thunderbird's HTTPS-Only Mode rewrites `ws://` to `wss://` with no
-fallback, so its extension connects to a second, TLS-only port. That
-listener needs a self-signed certificate, and without one the daemon
-simply logs a line and carries on with the other port. Everything except
-the Thunderbird extension is unaffected.
-
-```bash
-mkdir -p backnav-engine/certs
-openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
-    -keyout backnav-engine/certs/key.pem \
-    -out backnav-engine/certs/cert.pem \
-    -subj "/CN=127.0.0.1" -addext "subjectAltName=IP:127.0.0.1"
-chmod 600 backnav-engine/certs/key.pem
-```
-
-To have the daemon start with your session, put this in
-`~/.config/systemd/user/backnav.service`, adjusting the two paths:
-
-```ini
-[Unit]
-Description=BackNav navigation daemon
-After=graphical-session.target
-PartOf=graphical-session.target
-
-[Service]
-ExecStart=/usr/bin/python3 /path/to/backnav/backnav-engine/backnav.py
-WorkingDirectory=/path/to/backnav/backnav-engine
-Restart=on-failure
-RestartSec=2
-
-[Install]
-WantedBy=graphical-session.target
-```
-
-```bash
-systemctl --user enable --now backnav
-journalctl --user -u backnav -f     # what it is seeing
-```
-
-For tab-level navigation in a browser, install the matching extension
-from `browser/`. Each directory has its own readme;
-[`browser/README.md`](browser/README.md) explains which build covers
-which browser.
-
-## Configuring
-
-Optional. Copy [`backnavrc.example`](backnavrc.example) to
-`~/.config/backnavrc` and edit. Changes take effect on the next gesture,
-with nothing to restart.
-
-Two settings, both matters of feel: `DwellMs`, how long a pause ends a
-gesture, and `HoldMs`, how long a hold takes to summon the panel.
-
-## Status
-
-Working, and in daily use by its author, which is where most of its bug
-reports come from. Non-supported applications will behave like traditional
-Alt+Tab.
-
-[`TODO.md`](TODO.md) is the honest list of what is outstanding, what is
-known-broken, and what has been deliberately left alone.
