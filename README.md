@@ -224,6 +224,21 @@ Three pieces, because the information lives in three places:
 
 Requires KDE Plasma 6 on Wayland, and Python 3.
 
+Start with the tools and the daemon's two dependencies:
+
+```bash
+sudo apt install git python3-websockets python3-dbus-next
+```
+
+Installing them from apt rather than pip is not a preference. Ubuntu
+24.04 and later ship Python as an externally managed environment, so
+`pip install` into the system refuses outright and tells you to use the
+package manager - which has both, so there is nothing to work around.
+
+> **While this repository is private**, cloning needs authentication:
+> `sudo apt install gh`, then `gh auth login` once. Remove this note when
+> it goes public - a public clone needs neither.
+
 ```bash
 git clone https://github.com/davidmal1/backnav.git
 cd backnav
@@ -239,13 +254,8 @@ shortcut is the whole interface.
 There is a second action, *BackNav: Navigate Forward*, which is entirely
 optional - see below. Leaving it unbound costs nothing.
 
-Then run the daemon. It needs `dbus-next` and `websockets`:
-
-```bash
-pip install dbus-next websockets
-```
-
-That is enough to run it:
+Then run the daemon. Its dependencies came from the `apt` line above, so
+there is nothing further to install:
 
 ```bash
 python3 backnav-engine/backnav.py
@@ -373,6 +383,13 @@ WantedBy=graphical-session.target
 systemctl --user enable --now backnav
 journalctl --user -u backnav -f     # what it is seeing
 ```
+
+`/usr/bin/python3` is correct only if the dependencies came from apt as
+above. If you installed them into a virtualenv instead, `ExecStart` has
+to name that interpreter - `/path/to/venv/bin/python3` - because systemd
+runs the unit without your shell, so an activated venv is not inherited.
+The failure is a clean `ModuleNotFoundError` in the journal, which is at
+least honest about what is wrong.
 
 ## Configuring
 

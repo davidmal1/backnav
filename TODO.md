@@ -88,7 +88,11 @@ list, not an archive.
      currently cannot install, so that paragraph is the last thing making
      the three unequal.
 
-  5. Nothing else in the README needs changing. "Open an issue" already
+  5. Delete the blockquote in the README's Installing section telling
+     people to `gh auth login` first. It is true only while the repo is
+     private; a public clone needs no authentication and no `gh`.
+
+  6. Nothing else in the README needs changing. "Open an issue" already
      links to the issues tab and Issues are enabled, so the invitation
      becomes true on the visibility flip.
 
@@ -175,6 +179,14 @@ list, not an archive.
   is heavy.
 
 ## Worth watching in use
+
+- **`websockets.server.serve` is deprecated** and warns on every apt
+  build. Still present and working in 15.0.1 and 17.0.1 - proven on
+  2026-08-21 with a real TLS bind and round trip under apt's 15.0.1, not
+  just an import check - but it is the legacy API and will go. The
+  replacement is `websockets.asyncio.server`. Nothing forces the move
+  yet; the day it does, the daemon stops starting rather than degrading,
+  so it is worth doing before a release rather than after a report.
 
 Things that are fixed but whose fix is thin, or that would be quiet if
 they came back.
