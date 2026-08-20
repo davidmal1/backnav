@@ -33,14 +33,14 @@ It is not universal - each application picks its own key, and plenty
 offer nothing. And what it does varies between applications: some cycle
 by recency, some step through in order, some pop up a chooser. Even where
 the key works, what happens next is not something you can rely on
-knowing. Consistency is king.
+knowing.
 
 Between them, then, you are asked to work out where you are going before
 you can choose how to get there: inside this application or outside it,
 one key or the other, and the wrong guess takes you somewhere unrelated.
 That is a question you should never have to answer, because you already
 know the answer in the only form that matters - you remember the thing,
-not which window contains it.
+not which window contains it. Consistency is king.
 
 BackNav keeps a most-recently-used trail across windows *and* the tabs
 inside them, and gives you one shortcut to walk back along it, whichever
