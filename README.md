@@ -501,11 +501,12 @@ being unsupportable is the expected outcome rather than a disappointment.
 
 ### If you want to ask
 
-Open an issue with the output of steps 1 and 2, and say whether the title
-changes. That is the whole of what anyone would need to judge it, and it
-saves a round trip where the answer is "I cannot tell without a running
-copy". That is genuine: every app on the supported list was worked out by
-probing a live instance rather than by reading documentation.
+[Open an issue](https://github.com/davidmal1/backnav/issues) with the
+output of steps 1 and 2, and say whether the title changes. That is the
+whole of what anyone would need to judge it, and it saves a round trip
+where the answer is "I cannot tell without a running copy". That is
+genuine: every app on the supported list was worked out by probing a live
+instance rather than by reading documentation.
 
 Be aware that a *maybe* can still turn into a no. Kate's support took
 three attempts: the obvious call reopened closed documents, the
