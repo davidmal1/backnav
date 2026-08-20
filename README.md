@@ -268,8 +268,9 @@ from `browser/`. Without one, that browser still works at the window
 level - you just get one entry for the whole browser rather than one per
 tab.
 
-The three builds install three different ways, and only the first is
-ready to use as it sits in the repository.
+The two browser builds install differently, and only one is ready to use
+as it sits in the repository. Thunderbird uses the same mechanism and
+needs a little more, so it has its own section below.
 
 **Chrome, Brave and Vivaldi** load the directory directly. Go to
 `chrome://extensions`, turn on **Developer Mode**, choose **Load
@@ -277,20 +278,6 @@ unpacked** and select `browser/chromium/`. Nothing to build. The
 extension id is pinned by the `key` field in its manifest, so it stays
 the same wherever you load it from - which is what keeps BackNav's tab
 bindings intact if you ever move the folder.
-
-**Thunderbird** installs from an `.xpi`, and the `.xpi` is a build
-artifact that is deliberately not committed, so build it first:
-
-```bash
-cd /path/to/backnav/browser
-
-./build-xpi.sh thunderbird
-```
-
-Then in Thunderbird: **Add-ons and Themes** -> the gear icon ->
-**Install Add-on From File**, and pick the `.xpi` the script printed.
-Thunderbird accepts unsigned add-ons, so that is the whole procedure, and
-it survives restarts.
 
 **Firefox has no install route yet.** Release Firefox compiles signature
 enforcement in and ignores the preference that would turn it off, so a
@@ -305,10 +292,10 @@ listing, or self-distribution, which hands back a signed `.xpi` to host
 anywhere. Nothing in the extension needs to change for either -
 [`browser/README.md`](browser/README.md) covers both routes.
 
-Each build directory has its own readme with the detail, including
-Thunderbird's one-time certificate exception, which it needs and the
-browsers do not. [`browser/README.md`](browser/README.md) explains which
-build covers which browser and why the Gecko two differ.
+Each build directory has its own readme with the detail.
+[`browser/README.md`](browser/README.md) explains which build covers
+which browser, and why the two Gecko builds differ so sharply given they
+are nearly the same code.
 
 ### Only if you use kitty
 
@@ -337,11 +324,29 @@ you - it simply behaves as though qpdfview had no tabs.
 
 ### Only if you use Thunderbird
 
-Thunderbird's HTTPS-Only Mode rewrites `ws://` to `wss://` with no
-fallback, so its extension connects to a second, TLS-only port. That
-listener needs a self-signed certificate, and without one the daemon
-simply logs a line and carries on with the other port. Everything except
-the Thunderbird extension is unaffected.
+Not a browser, but it has tabs, and BackNav treats it exactly like one -
+an extension reports which tab is active. It needs two things the
+browsers do not.
+
+**First, the add-on.** It installs from an `.xpi`, which is a build
+artifact and deliberately not committed, so build it:
+
+```bash
+cd /path/to/backnav/browser
+
+./build-xpi.sh thunderbird
+```
+
+Then in Thunderbird: **Add-ons and Themes** -> the gear icon ->
+**Install Add-on From File**, and pick the `.xpi` the script printed.
+Thunderbird accepts unsigned add-ons, so no store is involved, and it
+survives restarts.
+
+**Second, a certificate.** Thunderbird's HTTPS-Only Mode rewrites `ws://`
+to `wss://` with no fallback, so its extension connects to a second,
+TLS-only port. That listener needs a self-signed certificate, and without
+one the daemon simply logs a line and carries on with the other port.
+Everything except the Thunderbird extension is unaffected.
 
 Run this from the repository root, the `backnav` directory you cloned
 into - the daemon looks for the certificate relative to its own location,
@@ -357,6 +362,12 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
     -subj "/CN=127.0.0.1" -addext "subjectAltName=IP:127.0.0.1"
 chmod 600 backnav-engine/certs/key.pem
 ```
+
+Being self-signed, it then has to be trusted once per Thunderbird
+profile, or the extension will not connect and will not say why. Those
+steps are in
+[`browser/thunderbird/readme.md`](browser/thunderbird/readme.md), along
+with what to redo if the certificate is ever regenerated.
 
 ### Starting it with your session
 
