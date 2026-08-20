@@ -272,25 +272,29 @@ The two browser builds install differently, and only one is ready to use
 as it sits in the repository. Thunderbird uses the same mechanism and
 needs a little more, so it has its own section below.
 
-**Chrome, Brave and Vivaldi** load the directory directly. Go to
-`chrome://extensions`, turn on **Developer Mode**, choose **Load
-unpacked** and select `browser/chromium/`. Nothing to build. The
+**Chrome, Brave and Vivaldi** load the directory directly. In a browser
+tab, go to `chrome://extensions`, turn on **Developer Mode**, choose
+**Load unpacked** and select `browser/chromium/`. Nothing to build. The
 extension id is pinned by the `key` field in its manifest, so it stays
 the same wherever you load it from - which is what keeps BackNav's tab
 bindings intact if you ever move the folder.
 
-**Firefox has no install route yet.** Release Firefox compiles signature
-enforcement in and ignores the preference that would turn it off, so a
-locally built `.xpi` is refused - `build-xpi.sh firefox` produces
-something you can validate, not something you can install. Only an
-AMO-signed copy will install, and none is published, so **Firefox
-currently works at the window level only**, like a browser with no
-extension at all.
+**Firefox is supported, but not yet downloadable.** Release Firefox
+compiles signature enforcement in and ignores the preference that would
+turn it off, so a locally built `.xpi` is refused - `build-xpi.sh
+firefox` produces something you can validate, not something you can
+install. Only an AMO-signed copy will install.
 
-Changing that needs an upload to AMO, which signs it: either a public
-listing, or self-distribution, which hands back a signed `.xpi` to host
-anywhere. Nothing in the extension needs to change for either -
-[`browser/README.md`](browser/README.md) covers both routes.
+That copy exists: 0.2 is signed and in use. What is missing is somewhere
+for you to get it from, and it will be attached to a release here when
+this repository goes public. **Until then Firefox works at the window
+level only**, like a browser with no extension - the limitation is
+distribution, not the extension.
+
+The other way out is to sign your own: an AMO account, an upload on the
+self-distribution channel, and the signed file comes back to you.
+[`browser/README.md`](browser/README.md) covers that, and why Firefox
+needs it when Thunderbird does not.
 
 Each build directory has its own readme with the detail.
 [`browser/README.md`](browser/README.md) explains which build covers

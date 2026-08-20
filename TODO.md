@@ -83,10 +83,12 @@ list, not an archive.
      match exactly. Getting it wrong FAILS SILENTLY - Firefox finds no
      update and says nothing, and nothing in the repo checks it.
 
-  4. Then the root README: replace "Firefox has no install route yet"
-     with the release link. It is the only supported browser a new user
-     currently cannot install, so that paragraph is the last thing making
-     the three unequal.
+  4. Then the root README: the Firefox paragraph under "Installing the
+     browser extensions" says the signed build exists but is not yet
+     downloadable, and names the release as where it will be. Replace
+     that with the link. It is the only supported browser a new user
+     cannot install, so that paragraph is the last thing making the
+     three unequal.
 
   5. Delete the blockquote in the README's Installing section telling
      people to `gh auth login` first. It is true only while the repo is
