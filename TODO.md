@@ -8,6 +8,31 @@ Reasoning that used to sit in this file has moved to where the code is:
 traps, and comments next to the things they explain. This is a status
 list, not an archive.
 
+## Settled, so it does not get re-argued
+
+- **BackNav navigates tabs, not sub-window layout.** Terminal splits,
+  Kate's split view, a mail client's folder and preview panes, a
+  browser's side panel: none of it is navigated, anywhere, and the
+  supported table saying "the individual tab" is the whole statement.
+
+  Decided 2026-08-20 after probing terminal splits in detail. kitty
+  treats a split tab as one entry; Konsole gives each pane its own
+  session, so it records one entry per pane, and restoring lands on the
+  tab. A note describing exactly that was written and then removed,
+  because documenting it for terminals invites the same question for
+  every other application and the list has no natural end.
+
+  Worth keeping from that investigation, since it nearly went into the
+  README backwards: Konsole DETECTS panes it cannot separately restore,
+  and kitty ignores them. So Konsole is the finer-grained detector and
+  the weaker restorer, which is the opposite of the obvious guess.
+
+  Konsole tab restore itself is fine - verified end to end, picking an
+  earlier Konsole tab from the switcher lands on the right one. D-Bus
+  probing had made it look broken, because `setCurrentSession` will not
+  move focus for a window that is not active, which is invisible from
+  outside.
+
 ## Still open
 
 - **Chrome Web Store submission**, for the chromium build - one
