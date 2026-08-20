@@ -110,12 +110,11 @@ where BackNav registers them under the **KWin** component. Search for
 `BackNav` and you will find *BackNav: Navigate Back* and *BackNav:
 Navigate Forward*.
 
-Pick the combination you want for **Navigate Back** and press it into
-the field. Something
-uncontested like **Meta+Tab** just works. **Alt+Tab** is already KWin's
-own *Walk Through Windows*, so KDE will warn about the conflict and offer
-to reassign - accepting takes Alt+Tab away from the built-in switcher and
-gives it to BackNav, which is the point.
+Pick the combination you want for **Navigate Back** and press it into the
+field. Something uncontested like **Meta+Tab** just works. **Alt+Tab** is
+already KWin's own *Walk Through Windows*, so KDE will warn about the
+conflict and offer to reassign - accepting takes Alt+Tab away from the
+built-in switcher and gives it to BackNav, which is the point.
 
 If you later want the old behaviour back, *Walk Through Windows* has a
 "reset to default" button, so nothing here is one-way.
@@ -295,7 +294,13 @@ listener needs a self-signed certificate, and without one the daemon
 simply logs a line and carries on with the other port. Everything except
 the Thunderbird extension is unaffected.
 
+Run this from the repository root, the `backnav` directory you cloned
+into - the daemon looks for the certificate relative to its own location,
+so it has to go there rather than anywhere convenient:
+
 ```bash
+cd /path/to/backnav
+
 mkdir -p backnav-engine/certs
 openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
     -keyout backnav-engine/certs/key.pem \
