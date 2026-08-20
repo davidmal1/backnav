@@ -29,6 +29,49 @@ list, not an archive.
   versions, pinned id. See `browser/README.md`, including the note about
   swapping the manifest `key` for the Web Store's on submission day.
 
+- **kitty clears all three requirements, and more cleanly than anything
+  currently supported.** Probed 2026-08-20.
+
+  It is invisible to the usual probe: kitty owns no D-Bus name at all.
+  What it has instead is its own remote-control protocol over a Unix
+  socket, and it is better than most D-Bus interfaces here.
+
+  1. *A signal that a tab changed* - the window title follows the tab.
+  2. *A way to ask which is open now* - `kitty @ ls` returns every tab as
+     structured JSON: `id`, `title`, `is_active`. **No caption parsing
+     and no heuristic**, which is what makes this cleaner than qpdfview
+     (caption stem plus a database read), Kate (minted tokens) or KMail
+     (caption to Akonadi id).
+  3. *A way to switch without creating* - `focus-tab --match id:N`,
+     verified by round trip:
+
+     ```
+     active            tab 2 '/tmp'
+     focus-tab id:1 -> tab 1 '~'
+     focus-tab id:2 -> tab 2 '/tmp'
+     ```
+
+  Three things an adapter would have to deal with.
+
+  **It must be switched on.** kitty defaults to `allow_remote_control
+  no`, so this needs a one-time setting - the same shape as qpdfview
+  already needing "Restore tabs" enabled.
+
+  **The grant is wide.** `allow_remote_control yes` lets anything that
+  reaches the socket run commands in the terminal and read its text via
+  `get-text`. That is far more than BackNav needs, and much more than any
+  current adapter is handed. kitty offers `socket-only` and
+  password-protected modes; an adapter should establish the narrowest one
+  that works rather than documenting the easiest.
+
+  **The socket is per-process**, `/tmp/kitty-<pid>`, so it has to be
+  discovered from the pid rather than assumed - the same shape as Kate's
+  and Konsole's per-pid D-Bus names, so the existing adapters are the
+  pattern to copy.
+
+  Same gate as KMail: worth building only if kitty gets used, since every
+  supported app was verified in daily use rather than only probed.
+
 - **KMail clears all three requirements.** The first application to do so
   since qpdfview. Proven live 2026-08-19 against a real IMAP account, not
   reasoned about.

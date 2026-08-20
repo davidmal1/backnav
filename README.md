@@ -352,6 +352,32 @@ own, so the route there was to read its database instead. If an app
 plainly ought to expose something and does not, packaging or policy is
 worth suspecting before the application itself.
 
+**D-Bus is not the only way an application can be driven, so silence here
+is not the end of the enquiry.** Some expose a remote-control channel of
+their own instead, and it can be richer than anything on the bus.
+
+kitty is the example. It owns no bus name at all, so step 1 dismisses it
+outright - and yet `kitty @ ls` returns every tab as structured JSON with
+`id`, `title` and which one is active, and `kitty @ focus-tab --match
+id:N` switches to one without creating anything. That is a better answer
+to steps 2 and 3 than most D-Bus interfaces manage, because it needs no
+caption parsing and no heuristic at all.
+
+So if an application is silent on the bus but you know it has a CLI or a
+scripting interface, check that before giving up. `--help` is usually
+enough:
+
+```bash
+kitty @ --help          # lists ls, focus-tab, focus-window, ...
+```
+
+Two things to weigh if you find one. It may need switching on - kitty
+defaults to `allow_remote_control no` - which is a one-time setup step of
+the same kind qpdfview already needs. And it may grant far more than
+BackNav wants: kitty's remote control lets anything reaching the socket
+run commands in the terminal and read its text, so the narrowest mode
+that works is the right one to ask for.
+
 **2. What does it offer?** Using the service name from step 1:
 
 ```bash
