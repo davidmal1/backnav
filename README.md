@@ -369,7 +369,7 @@ steps are in
 [`browser/thunderbird/readme.md`](browser/thunderbird/readme.md), along
 with what to redo if the certificate is ever regenerated.
 
-### Starting it with your session
+### Starting BackNav with your session
 
 Put this in `~/.config/systemd/user/backnav.service`, adjusting the two
 paths:
