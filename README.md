@@ -262,9 +262,14 @@ BackNav needs. kitty offers narrower modes - `socket-only` and a
 password-protected form - and they are worth preferring if you are
 comfortable configuring them.
 
-qpdfview needs a comparable one-time setting: "Restore tabs" under
-Preferences -> Behavior, without which it never writes the database this
-reads.
+### Only if you use qpdfview
+
+qpdfview needs **"Restore tabs"** enabled, under *Preferences ->
+Behavior*. It is off by default.
+
+Without it qpdfview never writes the tab database BackNav reads, so the
+window is navigable but the individual documents are not. Nothing warns
+you - it simply behaves as though qpdfview had no tabs.
 
 ### Only if you use Thunderbird
 
