@@ -70,6 +70,13 @@ on, and it was replaced. A linear stack accumulates duplicates of the
 places you keep returning to, which is exactly the wrong shape for
 switching between a handful of things all day.
 
+**History keeps the 20 most recent places, and that is deliberate.**
+BackNav's value is at the shallow end - the last few things you were
+doing, where you know what you want and reaching for it beats looking for
+it. Something you last touched days and thirty entries ago is quicker to
+click on, and no amount of tapping or scrolling past an eight-row panel
+changes that. Twenty is already well past the point where the mouse wins.
+
 ## What it can navigate
 
 | | what BackNav restores |

@@ -1,5 +1,9 @@
 from core.models.focus_item import FocusItem
 
+# How many entries history keeps. See HistoryManager._trim() for why this
+# is small and why it is not a memory measure.
+MAX_HISTORY = 20
+
 
 class HistoryManager:
     """
@@ -121,6 +125,60 @@ class HistoryManager:
                 break
 
         self._mru.insert(0, item)
+        self._trim()
+
+    def _trim(self):
+        """
+        Hold the most recent MAX_HISTORY entries and forget the rest.
+
+        Not a memory measure - entries are a few hundred bytes and even ten
+        thousand would cost under 4MB, and Python cannot corrupt memory by
+        holding a long list. What is actually unbounded is the SET of dead
+        ids: mark_window_dead only ever adds, so before this, every window
+        and tab closed since the daemon started left a permanent trace.
+        Small, never reclaimed, and invisible until someone wonders why a
+        month-old daemon is fatter than a fresh one.
+
+        The cap is 20 because deep history has no use, not because deep
+        history is expensive. Reaching the thirtieth entry means thirty
+        taps or visually scanning a scrolling eight-row panel, and both
+        lose to clicking the window. BackNav competes with the mouse at
+        the shallow end and stops competing well before this cap.
+
+        Dead entries go FIRST, oldest first, and that is what makes a small
+        cap safe. Dead entries are skipped rather than removed, so a cap
+        counting them is not a cap on entries you can reach - close enough
+        tabs and 20 entries could be 14 corpses and 6 places, leaving the
+        panel with fewer rows than it has space for. The smaller the cap,
+        the harder that bites.
+
+        Oldest-dead-first rather than all-dead-at-once because
+        mark_tab_alive() exists: the extension's live-tab set can overturn
+        a dead marking, and the entries most likely to be overturned are
+        the recent ones.
+        """
+        while len(self._mru) > MAX_HISTORY:
+            dead = self._last_dead_index()
+
+            del self._mru[len(self._mru) - 1 if dead is None else dead]
+
+        # Whatever was evicted may have been the only entry naming an id,
+        # in which case remembering it is dead is remembering nothing. This
+        # is the half that actually bounds growth.
+        live_windows = {item.window_id for item in self._mru}
+        live_tabs = {
+            item.restore_id for item in self._mru if item.restore_id is not None
+        }
+
+        self._dead_windows &= live_windows
+        self._dead_tabs &= live_tabs
+
+    def _last_dead_index(self):
+        for i in range(len(self._mru) - 1, -1, -1):
+            if self._is_dead(self._mru[i]):
+                return i
+
+        return None
 
     @staticmethod
     def _target_of(item: FocusItem) -> tuple:
