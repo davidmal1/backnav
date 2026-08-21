@@ -192,4 +192,33 @@ assert ("vivaldi-1", 1) not in engine._kwin_window_for_browser_window, (
 assert engine._kwin_window_for_browser_window[("brave-1", 1)] == "10"
 assert engine.current.title != "Vivaldi Forum", f"got {items(engine)}"
 
+# 5. Packaging changes the resource class, and the map has to carry both.
+#
+#    Found on a clean Kubuntu install 2026-08-21: the snap reports
+#    "thunderbird_thunderbird", the deb "thunderbird", and only the
+#    latter was listed. The failure is silent and total - the extension
+#    connects and reports its tabs, _may_own() then refuses every event
+#    for want of a recognised window, and the switcher shows one frozen
+#    window-level row instead. Nothing errors.
+#
+#    Firefox already carried firefox_firefox for the same reason, which
+#    is what made the missing entry a gap rather than a discovery.
+for spelling in ("thunderbird", "thunderbird_thunderbird"):
+    engine = NavigationEngine(event_bus)
+    window = f"win-{spelling}"
+
+    event_bus.publish(FocusChanged(app=spelling, window_id=window, title="Inbox"))
+    event_bus.publish(BrowserTabChanged(
+        browser="thunderbird", connection_id=f"tb-{spelling}", window_id=1,
+        tab_id=7, title="Add-ons Manager",
+    ))
+
+    assert engine._kwin_window_for_browser_window.get(
+        (f"tb-{spelling}", 1)
+    ) == window, f"{spelling} did not bind"
+
+    assert engine.current.title == "Add-ons Manager", (
+        f"{spelling}: tab event discarded, got {items(engine)}"
+    )
+
 print("cross-app tab misattribution OK")

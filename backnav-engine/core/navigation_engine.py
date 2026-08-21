@@ -41,8 +41,16 @@ TAB_EXTENSION_APPS_BY_FAMILY = {
         "firefox_firefox",
     },
     # Confirmed live via the KWin script's own event log.
+    #
+    # Both spellings are real and depend on packaging, not version: the
+    # deb reports "thunderbird" and the snap "thunderbird_thunderbird" -
+    # the same doubled shape as firefox_firefox above, seen on a clean
+    # Kubuntu install 2026-08-21. Missing one costs the whole feature and
+    # says nothing: the extension connects, reports its tabs, and every
+    # event is then discarded for want of a window to attribute it to.
     "thunderbird": {
         "thunderbird",
+        "thunderbird_thunderbird",
     },
 }
 
