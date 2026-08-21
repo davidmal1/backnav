@@ -256,6 +256,40 @@ they came back.
 
 Dates are when it was confirmed working, not when it was written.
 
+- **2026-08-21** - The install works on a machine that is not this one.
+  Followed end to end on a clean Kubuntu VM by someone reading the page
+  rather than remembering it, which the README had never had.
+
+  It found one code bug and eight documentation ones. The bug is the
+  Thunderbird snap's resource class, above. The rest were all the same
+  shape: a step that assumes a state this machine was already in - a
+  directory that exists, a dependency already installed, a daemon already
+  running, a `cd` still in effect from four sections earlier.
+
+  Two are worth remembering beyond their fixes, because both were
+  invisible from a working machine:
+
+  - `pip install dbus-next websockets` **cannot succeed** on Ubuntu 24.04
+    or later, and the systemd unit named `/usr/bin/python3`, which has
+    never had those modules here - the daemon runs from a venv. So the
+    documented configuration had never worked anywhere, including on the
+    machine it was written on. Both are apt packages; installing them
+    that way makes the unit correct as printed.
+
+  - The page was written to be read top to bottom and is used by jumping
+    into it. Every "only if you use X" heading is an entry point, and
+    each one inherited context from sections above it.
+
+  Structural outcome: the daemon is now set up under systemd inside
+  Installing, rather than run by hand there and daemonised a hundred
+  lines later. That deleted a whole section, a warning about port
+  clashes, and a set of dual by-hand/systemd instructions - the conflict
+  had been created by the page's own ordering.
+
+  Also proven on that machine: the signed Firefox 0.2 as a FRESH install,
+  where the same file had only ever been tested as an upgrade over 0.1.
+  Both paths now hold.
+
 - **2026-08-20** - kitty tabs are navigable, the first supported
   application not reached over D-Bus. It owns no bus name; the adapter
   speaks kitty's own JSON protocol over a Unix socket instead, which
