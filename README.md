@@ -256,15 +256,70 @@ Error: Installation of  failed: No such file:
 which names neither what it wanted nor where it looked - and it exits 0
 while doing it. If you see that, you are in the wrong directory.
 
-Enable both in **System Settings → Window Management → KWin Scripts**,
-then bind *BackNav: Navigate Back* under **Shortcuts → KWin**. That one
-shortcut is the whole interface.
+Enable both scripts in **System Settings → Window Management → KWin
+Scripts**.
+
+Bind *BackNav: Navigate Back* under **Shortcuts → KWin**. Assign your
+desired shortcut key. That one shortcut is the whole interface.
 
 There is a second action, *BackNav: Navigate Forward*, which is entirely
-optional - see below. Leaving it unbound costs nothing.
+optional - see [Navigate Forward is
+optional](#navigate-forward-is-optional) above. Leaving it unbound costs
+nothing.
 
-Then run the daemon. Its dependencies came from the `apt` line above, so
-there is nothing further to install:
+Then set the daemon up to run with your session. Its dependencies came
+from the `apt` line above, so there is nothing further to install.
+
+The directory will not exist yet on a machine that has never had a user
+service, which is most of them:
+
+```bash
+mkdir -p ~/.config/systemd/user
+```
+
+Put this in `~/.config/systemd/user/backnav.service`, replacing both
+copies of `/home/you/backnav` with where you cloned it. It has to be
+written out in full - systemd does not expand `~`, so the `~/backnav`
+used elsewhere on this page will not work here:
+
+```ini
+[Unit]
+Description=BackNav navigation daemon
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+ExecStart=/usr/bin/python3 /home/you/backnav/backnav-engine/backnav.py
+WorkingDirectory=/home/you/backnav/backnav-engine
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target
+```
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now backnav
+journalctl --user -u backnav -f     # what it is seeing
+```
+
+`daemon-reload` is there because the directory is new: systemd scans for
+unit files when it starts, and one appearing in a path that did not exist
+then is not noticed on its own. If the unit reports as **masked**, the
+file is empty - systemd treats a zero-byte unit the same as a deliberately
+masked one, and says so in wording that suggests neither.
+
+`/usr/bin/python3` is correct only if the dependencies came from apt as
+above. If you used a virtualenv instead, `ExecStart` has to name that
+interpreter - `/path/to/venv/bin/python3` - because systemd runs the unit
+without your shell, so an activated venv is not inherited. The failure is
+a clean `ModuleNotFoundError` in the journal.
+
+You can also run it directly, which is worth knowing for debugging
+because it prints to the terminal instead of the journal - but it holds
+that terminal for as long as it runs, and it will not start while the
+service has the ports:
 
 ```bash
 python3 backnav-engine/backnav.py
@@ -283,7 +338,8 @@ needs a little more, so it has its own section below.
 
 **Chrome, Brave and Vivaldi** load the directory directly. In a browser
 tab, go to `chrome://extensions`, turn on **Developer Mode**, choose
-**Load unpacked** and select `browser/chromium/`. Nothing to build. The
+**Load unpacked** and select `~/backnav/browser/chromium`. Nothing to
+build. The
 extension id is pinned by the `key` field in its manifest, so it stays
 the same wherever you load it from - which is what keeps BackNav's tab
 bindings intact if you ever move the folder.
@@ -345,7 +401,7 @@ browsers do not.
 artifact and deliberately not committed, so build it:
 
 ```bash
-cd /path/to/backnav/browser
+cd ~/backnav/browser
 
 ./build-xpi.sh thunderbird
 ```
@@ -366,7 +422,7 @@ into - the daemon looks for the certificate relative to its own location,
 so it has to go there rather than anywhere convenient:
 
 ```bash
-cd /path/to/backnav
+cd ~/backnav
 
 mkdir -p backnav-engine/certs
 openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
@@ -380,27 +436,21 @@ chmod 600 backnav-engine/certs/key.pem
 so one generated while it was running changes nothing until it restarts -
 and the next step then fails against a port that was never opened.
 
-If you are still running it by hand, stop it with Ctrl+C and start it
-again. If you have already set up the systemd unit below, use
-`systemctl --user restart backnav`.
-
-It prints one line as it starts, and that line tells you whether the
-certificate was found:
-
-```
-WebSocket listening on :8765 (ws) and :8766 (wss)
-WebSocket listening on :8765 (ws) and :8766 disabled, no certificate
+```bash
+systemctl --user restart backnav
+journalctl --user -u backnav | grep 8766 | tail -1
 ```
 
-Under systemd it goes to the journal instead:
-`journalctl --user -u backnav | grep 8766 | tail -1`.
+That last line tells you whether the certificate was found - it reads
+either `:8766 (wss)` or `:8766 disabled, no certificate`. If you are
+running the daemon by hand instead, the same line goes to its terminal.
 
 **Fourth, trust it.** Self-signed certificates are refused by default and
 Thunderbird will not say so - the extension simply never connects. Once
 per profile:
 
-**Settings -> Privacy & Security -> Certificates -> View Certificates ->
-Servers** tab -> **Add Exception**
+**Settings -> Privacy & Security -> Certificates -> Manage Certificates
+-> Servers** tab -> **Add Exception**
 
 Location `127.0.0.1:8766` -> **Get Certificate** -> **Confirm Security
 Exception**
@@ -409,46 +459,13 @@ Redo this if the certificate is ever regenerated.
 [`browser/thunderbird/readme.md`](browser/thunderbird/readme.md) has the
 background on why Thunderbird needs TLS when the browsers do not.
 
-### Starting BackNav with your session
-
-Put this in `~/.config/systemd/user/backnav.service`, adjusting the two
-paths:
-
-```ini
-[Unit]
-Description=BackNav navigation daemon
-After=graphical-session.target
-PartOf=graphical-session.target
-
-[Service]
-ExecStart=/usr/bin/python3 /path/to/backnav/backnav-engine/backnav.py
-WorkingDirectory=/path/to/backnav/backnav-engine
-Restart=on-failure
-RestartSec=2
-
-[Install]
-WantedBy=graphical-session.target
-```
-
-```bash
-systemctl --user enable --now backnav
-journalctl --user -u backnav -f     # what it is seeing
-```
-
-`/usr/bin/python3` is correct only if the dependencies came from apt as
-above. If you installed them into a virtualenv instead, `ExecStart` has
-to name that interpreter - `/path/to/venv/bin/python3` - because systemd
-runs the unit without your shell, so an activated venv is not inherited.
-The failure is a clean `ModuleNotFoundError` in the journal, which is at
-least honest about what is wrong.
-
 ## Configuring
 
 Optional. Copy [`backnavrc.example`](backnavrc.example) from the
 repository into place and edit it:
 
 ```bash
-cp /path/to/backnav/backnavrc.example ~/.config/backnavrc
+cp ~/backnav/backnavrc.example ~/.config/backnavrc
 ```
 
 Changes take effect on the next gesture, with nothing to restart - the
