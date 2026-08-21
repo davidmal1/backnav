@@ -116,6 +116,33 @@ engine, output = run(steps)
 
 assert output == "", f"complained after a successful bind: {output!r}"
 
+# ---- quiet case: nothing focused YET ---------------------------------
+
+# The daemon follows the journal with -n 0, and the KWin script emits
+# activeWindow only on SCRIPT load - so a daemon restart starts blind and
+# stays blind until the user switches windows. An already-focused browser
+# reports tab switches throughout that window, and those genuinely cannot
+# be attributed.
+#
+# Reporting them prints "focused window is None", which blames the setup
+# for the daemon not knowing yet, and appears after any restart where
+# someone changes tabs before changing windows. Found by restarting the
+# real daemon and asking what it would say, rather than by review.
+engine, output = run([tab(connection="brave-1", browser="chromium", tab_id=n)
+                      for n in range(1, 40)])
+
+assert output == "", f"complained while still blind: {output!r}"
+
+# ...and once focus IS known, the same connection is judged normally.
+engine, output = run(
+    [tab(connection="brave-1", browser="chromium", tab_id=n) for n in range(1, 10)]
+    + [FocusChanged(app="some_unrecognised_class", window_id="10", title="?")]
+    + [tab(connection="brave-1", browser="chromium", tab_id=n) for n in range(10, 20)]
+)
+
+assert "discarding" in output, "blindness must not permanently silence it"
+assert "some_unrecognised_class" in output, output
+
 # ---- a recognised app is never reported ------------------------------
 
 # The fixed spelling must produce silence, which is what distinguishes

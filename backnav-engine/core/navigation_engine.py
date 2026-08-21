@@ -343,6 +343,17 @@ class NavigationEngine:
         the table worth trusting. This reports what was actually
         observed, and someone decides.
         """
+        # Nothing focused YET is not the same as nothing recognised. The
+        # daemon follows the journal with -n 0 and the KWin script emits
+        # activeWindow only on script load, so a restart starts blind:
+        # until the user switches windows there is no focus event, while
+        # an already-focused browser happily reports tab switches. Those
+        # discards are real but say nothing about support, and reporting
+        # them prints "focused window is None", which blames the setup
+        # for the daemon not knowing yet.
+        if self._current_app is None:
+            return
+
         count = self._discards_by_connection.get(event.connection_id, 0) + 1
         self._discards_by_connection[event.connection_id] = count
 
