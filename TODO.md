@@ -180,6 +180,40 @@ list, not an archive.
   Worth knowing before committing: the initial Akonadi sync and indexing
   is heavy.
 
+- **Say something when a tab event is discarded.** Cheap, and it would
+  have turned a two-hour hunt into a one-line answer.
+
+  The Thunderbird snap bug on 2026-08-21 was invisible in exactly the
+  place anyone would look. The daemon printed `extension connected` and
+  `reports 4 live tabs`, both true, while `_may_own()` threw away every
+  `tab_changed` that followed because `thunderbird_thunderbird` was not
+  a class it recognised. Tab navigation for that app was entirely dead
+  and nothing said so.
+
+  What made it hard is that the visible symptom argues against the real
+  cause. You get the plain window-level row, frozen on whatever caption
+  the window had when it took focus - because switching tabs inside a
+  focused window raises no KWin event to refresh it. That reads as a
+  cosmetic staleness bug, not as a whole feature being absent, so it
+  sends you looking at the overlay and the history rather than at
+  attribution.
+
+  The daemon has both halves of the fact at the moment it discards the
+  event: the focused window's resource class, and the extension family
+  claiming it. One line naming both, once per unrecognised pairing
+  rather than per event, would name the cause outright.
+
+  Not urgent, and deliberately not a guess-more-classes fix - adding
+  speculative entries to TAB_EXTENSION_APPS_BY_FAMILY would break the
+  one property that makes that table trustworthy, which is that every
+  entry was seen live. The diagnostic is the general answer; the table
+  stays evidence-only.
+
+  Related: the same packaging gap probably exists for other snaps.
+  `chromium_chromium` is the obvious candidate, unverified because no
+  Chromium snap has been run against this. It would fail identically
+  and just as quietly.
+
 ## Worth watching in use
 
 - **`websockets.server.serve` is deprecated** and warns on every apt
