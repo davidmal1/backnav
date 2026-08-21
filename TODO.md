@@ -35,92 +35,16 @@ list, not an archive.
 
 ## Still open
 
-- **Going public.** Intended eventually, not scheduled. The audit is
-  done, so what is left is a short sequence rather than an investigation.
-
-  History was checked commit by commit on 2026-08-21 and is clean. The
-  only key-shaped string in it is the chromium manifest `key`, which is
-  the PUBLIC half by design - it pairs with `browser/.keys/chromium.pem`,
-  which has never been committed, and publishing it is what pins the
-  extension id. `certs/` has never been committed either. No screenshots,
-  no journal dumps, no mail account names: worth stating explicitly,
-  because this is a tool whose subject matter is window titles and mail
-  folders, so the plausible leak here is a debugging artefact rather than
-  a credential.
-
-  Author identity was rewritten the same day, all 85 commits, from a real
-  name and personal domain to `davidmal1
-  <242782351+davidmal1@users.noreply.github.com>`. Trees were verified
-  byte-identical before and after. GitHub still links the commits to the
-  account, so attribution and the contribution graph are unaffected.
-
-  Reasoning worth keeping, since the first pass got it backwards: a real
-  name in commit metadata was argued for as a trust and credit signal,
-  but almost nobody reads `git log` to find out whose project it is -
-  they read the profile. So the credit is small while the exposure is
-  permanent and scraped. The profile name is reversible and commit
-  history is not, which is what settled it. If the attribution is ever
-  wanted, set it on the profile.
-
-  What is left, in order:
-
-  1. Flip visibility to public.
-  2. Optionally ask GitHub Support to garbage-collect the pre-rewrite
-     objects. They are unreferenced but addressable by their original
-     SHAs. Low risk - the repo has only ever been private with no forks,
-     so nobody has ever held those SHAs - and this is the last moment it
-     stays that way.
-  3. Cut a `v0.2` release and attach the signed Firefox `.xpi`, which is
-     already built and verified at
-     `browser/backnav-firefox-0.2-signed.xpi` - AMO-signed 2026-08-21,
-     confirmed byte-identical to the reviewed code, installed and
-     working.
-
-     **Attach it as `backnav-firefox-0.2.xpi`, without the `-signed`.**
-     The local name only distinguishes it from the unsigned build sitting
-     beside it; `firefox/updates.json` already points at
-     `/releases/download/v0.2/backnav-firefox-0.2.xpi` and the two must
-     match exactly. Getting it wrong FAILS SILENTLY - Firefox finds no
-     update and says nothing, and nothing in the repo checks it.
-
-  4. Then the root README: the Firefox paragraph under "Installing the
-     browser extensions" says the signed build exists but is not yet
-     downloadable, and names the release as where it will be. Replace
-     that with the link. It is the only supported browser a new user
-     cannot install, so that paragraph is the last thing making the
-     three unequal.
-
-  5. Delete the blockquote in the README's Installing section telling
-     people to `gh auth login` first. It is true only while the repo is
-     private; a public clone needs no authentication and no `gh`.
-
-  6. Nothing else in the README needs changing. "Open an issue" already
-     links to the issues tab and Issues are enabled, so the invitation
-     becomes true on the visibility flip.
-
-  Note `update_url` only resolves once the repo is public - it is served
-  from `raw.githubusercontent.com` off `main`. Until then Firefox update
-  checks fail quietly, which is correct for a build nobody else has, but
-  it does mean steps 1 and 3 cannot be tested out of order.
-
-  One trap outside this repo: the identity fix is `--local`, deliberately,
-  since changing the global would have affected every unrelated repo. The
-  global is still the personal address. So any FUTURE repo meant to be
-  published under `davidmal1` needs the same `git config --local` after
-  cloning, and forgetting is invisible until the first push.
-
 - **Chrome Web Store submission**, for the chromium build - one
   submission covers Chrome, Brave and Vivaldi.
 
-  **Optional now, which it was not a week ago.** The reason to hurry was
-  that an unpacked extension took its id from the directory it loaded
-  from, so moving the folder minted a new `instanceId` and broke tab
-  binding. The manifest `key` fixed that, so the store now buys
-  distribution and nothing else: Developer Mode is no longer a nuisance
-  you are working around, it is just something you happen to have on.
-
   **Decided 2026-08-21: not now.** Three of the four reasons to submit do
   not survive contact with who actually installs this.
+
+  What removed the urgency, earlier: an unpacked extension used to take
+  its id from the directory it loaded from, so moving the folder minted a
+  new `instanceId` and broke tab binding. The manifest `key` fixed that,
+  which left the store buying distribution and nothing else.
 
   *The Developer Mode barrier* is real for a general audience and not for
   this one. Anyone here has already cloned a repo, apt-installed
@@ -284,6 +208,32 @@ they came back.
 ## Done
 
 Dates are when it was confirmed working, not when it was written.
+
+- **2026-08-21** - Public, at https://github.com/davidmal1/backnav, with
+  a `v0.2` release carrying the signed Firefox extension.
+
+  The audit that preceded it found nothing to clean up. The only
+  key-shaped string in the history is the chromium manifest `key`, which
+  is the public half by design and is what pins the extension id; the
+  private half, the TLS certificate and the signed `.xpi` have never been
+  committed. No screenshots, no journal dumps, no mail account names -
+  worth stating for a tool whose subject matter is window titles.
+
+  Author identity was rewritten across all 85 commits beforehand, from a
+  real name and personal domain to the account's noreply address, with
+  the trees verified byte-identical before and after. GitHub still links
+  the commits, so attribution survives and only the domain is gone.
+
+  Verified after the flip rather than assumed: an anonymous clone with no
+  credentials succeeds, and the Firefox `update_url` returns 200. The
+  release asset was fetched from the exact URL `updates.json` names and
+  hashes identical to the signed file, still AMO-signed after the round
+  trip - so the update chain is proven, not just wired up.
+
+  Left deliberately undone: the pre-rewrite objects are still on GitHub,
+  unreferenced but addressable by their original SHAs. They differ from
+  the current ones only in author metadata, and nobody has ever held one
+  of those SHAs. Support can still garbage-collect them on request.
 
 - **2026-08-21** - The install works on a machine that is not this one.
   Followed end to end on a clean Kubuntu VM by someone reading the page

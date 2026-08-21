@@ -348,22 +348,22 @@ extension id is pinned by the `key` field in its manifest, so it stays
 the same wherever you load it from - which is what keeps BackNav's tab
 bindings intact if you ever move the folder.
 
-**Firefox is supported, but not yet downloadable.** Release Firefox
-compiles signature enforcement in and ignores the preference that would
-turn it off, so a locally built `.xpi` is refused - `build-xpi.sh
-firefox` produces something you can validate, not something you can
-install. Only an AMO-signed copy will install.
+**Firefox** installs from a signed file, which is on the releases page
+rather than in the repository:
+[**backnav-firefox-0.2.xpi**](https://github.com/davidmal1/backnav/releases/latest).
+Download it, then **Add-ons and Themes** -> the gear icon -> **Install
+Add-on From File**.
 
-That copy exists: 0.2 is signed and in use. What is missing is somewhere
-for you to get it from, and it will be attached to a release here when
-this repository goes public. **Until then Firefox works at the window
-level only**, like a browser with no extension - the limitation is
-distribution, not the extension.
+It is signed by Mozilla, so it installs permanently and updates itself
+from the releases page - there is nothing to reload by hand and no store
+listing involved.
 
-The other way out is to sign your own: an AMO account, an upload on the
-self-distribution channel, and the signed file comes back to you.
-[`browser/README.md`](browser/README.md) covers that, and why Firefox
-needs it when Thunderbird does not.
+Do not build this one yourself. `build-xpi.sh firefox` works, but release
+Firefox compiles signature enforcement in and ignores the preference that
+would turn it off, so what it produces is useful for validating a change
+and cannot be installed. That is why this build alone is distributed as a
+file: [`browser/README.md`](browser/README.md) covers the signing route,
+and why Firefox needs it when Thunderbird does not.
 
 Each build directory has its own readme with the detail.
 [`browser/README.md`](browser/README.md) explains which build covers
