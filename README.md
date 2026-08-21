@@ -235,10 +235,6 @@ Installing them from apt rather than pip is not a preference. Ubuntu
 `pip install` into the system refuses outright and tells you to use the
 package manager - which has both, so there is nothing to work around.
 
-> **While this repository is private**, cloning needs authentication:
-> `sudo apt install gh`, then `gh auth login` once. Remove this note when
-> it goes public - a public clone needs neither.
-
 ```bash
 git clone https://github.com/davidmal1/backnav.git
 cd backnav
