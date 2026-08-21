@@ -56,6 +56,13 @@ TAB_EXTENSION_APPS_BY_FAMILY = {
 
 TAB_EXTENSION_APPS = set().union(*TAB_EXTENSION_APPS_BY_FAMILY.values())
 
+# How many tab events a connection may have discarded before the daemon
+# says so. Not one: a browser that has not been focused yet legitimately
+# fails to bind, and a connection that is merely early must not be
+# reported as broken. A genuinely unrecognised resource class never stops
+# accumulating, so any small number separates the two.
+DISCARDS_BEFORE_COMPLAINING = 3
+
 
 def _may_own(app, family):
     """
@@ -133,6 +140,13 @@ class NavigationEngine:
         # refocusing it picks up tab activity that happened while it was
         # in the background.
         self._latest_tab_by_kwin_window = {}
+
+        # Support for _report_discard(): how many tab events each
+        # connection has had thrown away without ever binding, and which
+        # (resource class, family) pairs have already been complained
+        # about. See there for why it says anything at all.
+        self._discards_by_connection = {}
+        self._discards_reported = set()
 
         # KWin window_id -> latest known adapter restore_id for that
         # window (Konsole session, etc). Mirrors _latest_tab_by_kwin_window
@@ -280,6 +294,14 @@ class NavigationEngine:
 
         kwin_window_id = self._kwin_window_for_browser_window.get(browser_window_key)
 
+        if kwin_window_id is None:
+            self._report_discard(event)
+        else:
+            # It bound, so any earlier discards were the ordinary
+            # before-first-focus kind and must not accumulate towards a
+            # complaint.
+            self._discards_by_connection.pop(event.connection_id, None)
+
         if kwin_window_id is not None:
             self._latest_tab_by_kwin_window[kwin_window_id] = event
 
@@ -293,6 +315,54 @@ class NavigationEngine:
         # either.
         if kwin_window_id is not None and kwin_window_id == self._current_window_id:
             self._push_tab(event)
+
+    def _report_discard(self, event):
+        """
+        Say so, once, when a tab event cannot be attributed to any window.
+
+        This is the failure that hid the thunderbird_thunderbird bug for
+        as long as it did. An unrecognised resource class means every tab
+        event from that extension is dropped here, which disables tab
+        navigation for the application completely - and every OTHER signal
+        says things are fine. The extension connects, enumerates its tabs
+        and reports each switch; the connection log is clean. What you see
+        is the plain window-level row, frozen on whatever caption the
+        window had when it was focused, because switching tabs inside a
+        focused window raises no KWin event to refresh it. That reads as
+        cosmetic staleness rather than an absent feature, and sends you
+        looking anywhere but here.
+
+        The two facts that identify it are both in hand at this moment:
+        the focused window's class, and the family claiming the tab. So
+        say them.
+
+        Once per pair, not per event - tab events are continuous, and a
+        line each would bury the one that matters. Deliberately NOT a
+        prompt to add more names to TAB_EXTENSION_APPS_BY_FAMILY on
+        suspicion: every entry there was seen live, which is what makes
+        the table worth trusting. This reports what was actually
+        observed, and someone decides.
+        """
+        count = self._discards_by_connection.get(event.connection_id, 0) + 1
+        self._discards_by_connection[event.connection_id] = count
+
+        if count < DISCARDS_BEFORE_COMPLAINING:
+            return
+
+        pair = (self._current_app, event.browser)
+
+        if pair in self._discards_reported:
+            return
+
+        self._discards_reported.add(pair)
+
+        print(
+            f"backnav: discarding {event.browser} tab events - focused "
+            f"window is {self._current_app!r}, which no extension family "
+            f"claims. Tab navigation is inactive for it; window-level "
+            f"still works.",
+            flush=True,
+        )
 
     def _may_bind(self, browser_window_key, family):
         """
