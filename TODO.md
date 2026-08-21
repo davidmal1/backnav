@@ -64,8 +64,9 @@ list, not an archive.
   ask than a store install, and no amount of readme fixes that.
 
   *Discovery* is the only reason left with force, and it is the honest
-  one: nobody finds an unpacked extension. Worth revisiting if the repo
-  going public produces actual users; pointless before that.
+  one: nobody finds an unpacked extension. The repo went public the same
+  day this was decided, so the question is now simply whether anyone
+  turns up - revisit if they do.
 
   **Chrome offers no middle path, which is what makes this binary.**
   Firefox had self-distribution: AMO signs it, you host it. Chrome blocks
