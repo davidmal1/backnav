@@ -242,10 +242,19 @@ package manager - which has both, so there is nothing to work around.
 ```bash
 git clone https://github.com/davidmal1/backnav.git
 cd backnav
-
 kpackagetool6 --type KWin/Script -i backnav-kwin
 kpackagetool6 --type KWin/Script -i backnav-kwin-overlay
 ```
+
+The `cd` matters, and skipping it fails badly: `kpackagetool6` takes the
+two names as relative paths, so from anywhere else you get
+
+```
+Error: Installation of  failed: No such file:
+```
+
+which names neither what it wanted nor where it looked - and it exits 0
+while doing it. If you see that, you are in the wrong directory.
 
 Enable both in **System Settings → Window Management → KWin Scripts**,
 then bind *BackNav: Navigate Back* under **Shortcuts → KWin**. That one
@@ -367,11 +376,38 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
 chmod 600 backnav-engine/certs/key.pem
 ```
 
-Being self-signed, it then has to be trusted once per Thunderbird
-profile, or the extension will not connect and will not say why. Those
-steps are in
-[`browser/thunderbird/readme.md`](browser/thunderbird/readme.md), along
-with what to redo if the certificate is ever regenerated.
+**Third, restart the daemon.** It reads the certificate only at startup,
+so one generated while it was running changes nothing until it restarts -
+and the next step then fails against a port that was never opened.
+
+If you are still running it by hand, stop it with Ctrl+C and start it
+again. If you have already set up the systemd unit below, use
+`systemctl --user restart backnav`.
+
+It prints one line as it starts, and that line tells you whether the
+certificate was found:
+
+```
+WebSocket listening on :8765 (ws) and :8766 (wss)
+WebSocket listening on :8765 (ws) and :8766 disabled, no certificate
+```
+
+Under systemd it goes to the journal instead:
+`journalctl --user -u backnav | grep 8766 | tail -1`.
+
+**Fourth, trust it.** Self-signed certificates are refused by default and
+Thunderbird will not say so - the extension simply never connects. Once
+per profile:
+
+**Settings -> Privacy & Security -> Certificates -> View Certificates ->
+Servers** tab -> **Add Exception**
+
+Location `127.0.0.1:8766` -> **Get Certificate** -> **Confirm Security
+Exception**
+
+Redo this if the certificate is ever regenerated.
+[`browser/thunderbird/readme.md`](browser/thunderbird/readme.md) has the
+background on why Thunderbird needs TLS when the browsers do not.
 
 ### Starting BackNav with your session
 
