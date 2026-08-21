@@ -298,10 +298,18 @@ RestartSec=2
 WantedBy=graphical-session.target
 ```
 
+Save the file, then enter these in a terminal to load and start it:
+
 ```bash
 systemctl --user daemon-reload
 systemctl --user enable --now backnav
-journalctl --user -u backnav -f     # what it is seeing
+```
+
+To watch what it is seeing - this one follows the log and keeps the
+terminal until you press Ctrl+C:
+
+```bash
+journalctl --user -u backnav -f
 ```
 
 `daemon-reload` is there because the directory is new: systemd scans for
