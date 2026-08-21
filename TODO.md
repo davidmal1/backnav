@@ -119,14 +119,43 @@ list, not an archive.
   distribution and nothing else: Developer Mode is no longer a nuisance
   you are working around, it is just something you happen to have on.
 
-  So this is worth doing exactly as much as you want BackNav usable by
-  people who are not you. For them it removes a real barrier - clone a
-  repo, enable Developer Mode, load unpacked, then repeat every update by
-  hand. For you it changes nothing.
+  **Decided 2026-08-21: not now.** Three of the four reasons to submit do
+  not survive contact with who actually installs this.
 
-  Everything needed is ready: icons, minimal permissions, aligned
-  versions, pinned id. See `browser/README.md`, including the note about
-  swapping the manifest `key` for the Web Store's on submission day.
+  *The Developer Mode barrier* is real for a general audience and not for
+  this one. Anyone here has already cloned a repo, apt-installed
+  dependencies, hand-written a systemd unit and run openssl. Load
+  unpacked is easier than several steps they have already completed.
+
+  *Manual updates* looked like the strong argument and is the weakest.
+  The extension ships in the same repository as the daemon, so the
+  `git pull` that updates BackNav updates the extension too - the only
+  extra cost is clicking reload. And it cuts the other way: there is NO
+  protocol version negotiation between daemon and extension, so a
+  store-installed copy updating on Google's schedule could drift ahead of
+  the daemon with nothing detecting it. Unpacked keeps them in lockstep
+  by construction, which is a point FOR staying off the store.
+
+  *Trust* stands - asking someone to enable Developer Mode is a bigger
+  ask than a store install, and no amount of readme fixes that.
+
+  *Discovery* is the only reason left with force, and it is the honest
+  one: nobody finds an unpacked extension. Worth revisiting if the repo
+  going public produces actual users; pointless before that.
+
+  **Chrome offers no middle path, which is what makes this binary.**
+  Firefox had self-distribution: AMO signs it, you host it. Chrome blocks
+  off-store `.crx` installs for ordinary users outright, so it is the Web
+  Store or unpacked with nothing between - no cheap halfway option to
+  reach for later.
+
+  Nothing is lost by waiting. The one genuinely time-sensitive piece was
+  the id, and the manifest `key` already pins it. Everything else is
+  ready: icons, minimal permissions, aligned versions. See
+  `browser/README.md`, including the note about swapping the manifest
+  `key` for the Web Store's on submission day, and the trap that follows
+  it - the old unpacked copy must be removed at that point or both run at
+  once.
 
 - **KMail clears all three requirements.** The first application to do so
   since qpdfview. Proven live 2026-08-19 against a real IMAP account, not
