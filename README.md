@@ -77,6 +77,18 @@ it. Something you last touched days and thirty entries ago is quicker to
 click on, and no amount of tapping or scrolling past an eight-row panel
 changes that. Twenty is already well past the point where the mouse wins.
 
+Holding the shortcut looks like this:
+
+![The BackNav switcher panel showing eight entries - two Kate documents,
+three Konsole tabs, two Thunderbird tabs and a Brave tab - each with its
+application icon, ordered by how recently it was
+used](docs/overlay.png)
+
+Eight rows, and not one of them is a window. Two documents open in Kate,
+three Konsole tabs, two Thunderbird tabs and a browser tab, ordered by
+when you last touched them rather than grouped by application. Alt+Tab
+looking at the same desktop shows four icons.
+
 ## What it can navigate
 
 | | what BackNav restores |
