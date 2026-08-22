@@ -2,6 +2,7 @@ import json
 import subprocess
 
 from core.events.focus_changed import FocusChanged
+from core.events.focus_lost import FocusLost
 from core.events.window_caption_changed import WindowCaptionChanged
 from core.events.window_closed import WindowClosed
 
@@ -46,7 +47,13 @@ class KWinMonitor:
             # flow through this journalctl feed.
             event_type = data.get("type")
 
-            if event_type not in ("focus", "caption", "closed"):
+            if event_type not in ("focus", "caption", "closed", "blur"):
+                continue
+
+            # The one event with no window - KWin reporting that nothing
+            # at all is active. See FocusLost.
+            if event_type == "blur":
+                yield FocusLost(timestamp=data["timestamp"] / 1000)
                 continue
 
             window = data["window"]

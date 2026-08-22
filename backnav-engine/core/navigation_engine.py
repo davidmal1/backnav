@@ -6,6 +6,7 @@ from core.events.browser_tab_changed import BrowserTabChanged
 from core.events.browser_tab_closed import BrowserTabClosed
 from core.events.browser_tabs_alive import BrowserTabsAlive
 from core.events.focus_changed import FocusChanged
+from core.events.focus_lost import FocusLost
 from core.events.window_caption_changed import WindowCaptionChanged
 from core.events.window_closed import WindowClosed
 from core.history_manager import HistoryManager
@@ -160,6 +161,7 @@ class NavigationEngine:
         self._live_targets = None
 
         event_bus.subscribe(FocusChanged, self._on_focus_changed)
+        event_bus.subscribe(FocusLost, self._on_focus_lost)
         event_bus.subscribe(BrowserTabChanged, self._on_browser_tab_changed)
         event_bus.subscribe(WindowClosed, self._on_window_closed)
         event_bus.subscribe(BrowserTabClosed, self._on_browser_tab_closed)
@@ -285,6 +287,22 @@ class NavigationEngine:
             self._push_adapter_tab(adapter, event)
         else:
             self._push_window(event)
+
+    def _on_focus_lost(self, event: FocusLost):
+        """
+        Nothing is focused any more - everything minimised, or the last
+        window closed.
+
+        Only forgets where focus IS. History is untouched: the windows are
+        still there and still worth navigating to, which is the whole
+        point of being able to Meta+Tab out of an empty desktop.
+
+        Without this the daemon carried on believing the last window it
+        heard about still had focus, because the KWin script said nothing
+        when KWin reported no active window. See abandon_walk().
+        """
+        self._current_app = None
+        self._current_window_id = None
 
     def _on_browser_tab_changed(self, event: BrowserTabChanged):
         browser_window_key = (event.connection_id, event.window_id)
@@ -827,8 +845,18 @@ class NavigationEngine:
         Escape out of the focused chooser: go back to where the gesture
         started and leave the MRU order untouched. See
         HistoryManager.abandon().
+
+        Returns None when nothing had focus, which is not the same as
+        having nothing in history. Cancelling raises the entry you started
+        on, because the panel took keyboard focus and somebody has to give
+        it back - but if the gesture started from an empty desktop there
+        is nothing to give it back TO, and raising _mru[0] anyway
+        un-minimises a window nobody chose. Reported live 2026-08-22:
+        minimise everything, hold, Escape, and a window comes back.
         """
-        return self._history.abandon()
+        item = self._history.abandon()
+
+        return None if self._current_window_id is None else item
 
     def commit_walk(self):
         """

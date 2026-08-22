@@ -121,6 +121,26 @@ for (const w of workspace.stackingOrder) {
 
 // Future activations
 workspace.windowActivated.connect(function(window) {
+    // KWin passes null when nothing is active at all - every window
+    // minimised, or the last one closed with nothing behind it. Say so
+    // rather than staying silent, which is what emitEvent() does with a
+    // falsy window and what made the daemon go on believing the
+    // last-focused window still had focus.
+    //
+    // That mattered for exactly one thing and it was a real bug: Escape
+    // in the chooser hands focus back to where the gesture started, so
+    // with everything minimised it un-minimised and raised a window
+    // nobody had selected.
+    if (!window) {
+        console.log(JSON.stringify({
+            version: 1,
+            timestamp: Date.now(),
+            type: "blur"
+        }));
+
+        return;
+    }
+
     emitEvent(window);
 });
 
