@@ -142,10 +142,11 @@ class NavigationEngine:
         # in the background.
         self._latest_tab_by_kwin_window = {}
 
-        # Support for _report_discard(): how many tab events each
-        # connection has had thrown away without ever binding, and which
-        # (resource class, family) pairs have already been complained
-        # about. See there for why it says anything at all.
+        # Support for _report_discard(): connections that have ever bound
+        # successfully, how many events each connection has had thrown
+        # away, and which (resource class, family) pairs have already been
+        # complained about. See there for why it says anything at all.
+        self._bound_connections = set()
         self._discards_by_connection = {}
         self._discards_reported = set()
 
@@ -310,6 +311,11 @@ class NavigationEngine:
         if self._may_bind(browser_window_key, event.browser):
             self._kwin_window_for_browser_window[browser_window_key] = self._current_window_id
 
+            # This connection's class is demonstrably recognised, so it can
+            # never be the unsupported-class case again. Remembered for the
+            # life of the connection, not just until the next discard.
+            self._bound_connections.add(event.connection_id)
+
         kwin_window_id = self._kwin_window_for_browser_window.get(browser_window_key)
 
         if kwin_window_id is None:
@@ -319,6 +325,7 @@ class NavigationEngine:
             # before-first-focus kind and must not accumulate towards a
             # complaint.
             self._discards_by_connection.pop(event.connection_id, None)
+            self._bound_connections.add(event.connection_id)
 
         if kwin_window_id is not None:
             self._latest_tab_by_kwin_window[kwin_window_id] = event
@@ -336,30 +343,37 @@ class NavigationEngine:
 
     def _report_discard(self, event):
         """
-        Say so, once, when a tab event cannot be attributed to any window.
+        Say so, once, when tab events are being dropped for a class that
+        nothing supports.
 
-        This is the failure that hid the thunderbird_thunderbird bug for
-        as long as it did. An unrecognised resource class means every tab
-        event from that extension is dropped here, which disables tab
-        navigation for the application completely - and every OTHER signal
-        says things are fine. The extension connects, enumerates its tabs
-        and reports each switch; the connection log is clean. What you see
-        is the plain window-level row, frozen on whatever caption the
-        window had when it was focused, because switching tabs inside a
-        focused window raises no KWin event to refresh it. That reads as
-        cosmetic staleness rather than an absent feature, and sends you
-        looking anywhere but here.
+        The failure this exists for hid the thunderbird_thunderbird bug:
+        an unrecognised resource class means every tab event from that
+        extension is discarded, tab navigation for the application is
+        completely off, and every other signal says healthy. The extension
+        connects, enumerates its tabs and reports each switch; the
+        connection log is clean. What you see is the window-level row,
+        frozen on whatever caption the window had when it was focused,
+        which reads as cosmetic staleness rather than an absent feature.
 
-        The two facts that identify it are both in hand at this moment:
-        the focused window's class, and the family claiming the tab. So
-        say them.
+        The hard part is not saying it but NOT saying it. Discarding is
+        ordinary and has three causes, of which only the first is a fault:
 
-        Once per pair, not per event - tab events are continuous, and a
-        line each would bury the one that matters. Deliberately NOT a
-        prompt to add more names to TAB_EXTENSION_APPS_BY_FAMILY on
-        suspicion: every entry there was seen live, which is what makes
-        the table worth trusting. This reports what was actually
-        observed, and someone decides.
+        1. the focused class is claimed by no family at all;
+        2. it is claimed, but not by THIS event's family - a background
+           Brave tab arriving while Firefox has focus, which _may_own()
+           rejects on purpose;
+        3. the KWin window is already bound to a different browser window.
+
+        The first version reported all three with the wording of the
+        first, so correct behaviour was announced as breakage - four
+        complaints in a day naming firefox_firefox, brave-browser and
+        qpdfview, all of them working perfectly. Cases 2 and 3 are now
+        silent, and the message only claims what it has established.
+
+        A connection that has EVER bound is never reported again either.
+        Binding proves its class is recognised, so it cannot be case 1 -
+        and that is what stops an ordinary browser being accused during
+        the window before it is first focused.
         """
         # Nothing focused YET is not the same as nothing recognised. The
         # daemon follows the journal with -n 0 and the KWin script emits
@@ -367,9 +381,18 @@ class NavigationEngine:
         # until the user switches windows there is no focus event, while
         # an already-focused browser happily reports tab switches. Those
         # discards are real but say nothing about support, and reporting
-        # them prints "focused window is None", which blames the setup
-        # for the daemon not knowing yet.
+        # them prints "focused window is None", which blames the setup for
+        # the daemon not knowing yet.
         if self._current_app is None:
+            return
+
+        # Case 2 and 3. The class works; something else stopped the bind,
+        # and none of it is the user's problem.
+        if self._current_app in TAB_EXTENSION_APPS:
+            return
+
+        # Proven recognised earlier in this connection's life.
+        if event.connection_id in self._bound_connections:
             return
 
         count = self._discards_by_connection.get(event.connection_id, 0) + 1
@@ -386,10 +409,11 @@ class NavigationEngine:
         self._discards_reported.add(pair)
 
         print(
-            f"backnav: discarding {event.browser} tab events - focused "
-            f"window is {self._current_app!r}, which no extension family "
-            f"claims. Tab navigation is inactive for it; window-level "
-            f"still works.",
+            f"backnav: discarding {event.browser} tab events - no extension "
+            f"family claims the focused window class {self._current_app!r}. "
+            f"If that is a {event.browser} window, its class needs adding to "
+            f"TAB_EXTENSION_APPS_BY_FAMILY; tab navigation is inactive for "
+            f"it until then, and window-level still works.",
             flush=True,
         )
 

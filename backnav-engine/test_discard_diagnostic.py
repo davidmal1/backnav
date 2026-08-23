@@ -143,6 +143,58 @@ engine, output = run(
 assert "discarding" in output, "blindness must not permanently silence it"
 assert "some_unrecognised_class" in output, output
 
+# ---- the four false positives it actually produced -------------------
+
+# Not hypothetical. These are the complaints found in one day's journal
+# after the first version shipped, every one of them describing correct
+# behaviour as breakage. The first version reported ALL discards with the
+# wording of the unsupported-class case, and discarding is ordinary.
+
+
+def tabs(conn, family, n=12, start=1):
+    return [BrowserTabChanged(browser=family, connection_id=conn, window_id=1,
+                              tab_id=i, title=f"t{i}") for i in range(start, start + n)]
+
+
+# 1. A class that IS claimed. Said "no extension family claims
+#    'firefox_firefox'" about an entry added the day before.
+_, output = run([FocusChanged(app="firefox_firefox", window_id="1", title="FF")]
+                + tabs("ff", "firefox"))
+
+assert output == "", f"complained about a claimed class: {output!r}"
+
+# 2. Claimed, but by another family - a background Firefox tab arriving
+#    while Brave has focus. _may_own() rejects that ON PURPOSE; it is the
+#    cross-app misattribution guard doing its job.
+_, output = run([FocusChanged(app="brave-browser", window_id="2", title="Brave")]
+                + tabs("ff", "firefox"))
+
+assert output == "", f"complained about a deliberate cross-app rejection: {output!r}"
+
+# 3 and 4. Background chatter while a NON-browser has focus, from a
+#    browser that has already bound. Nothing is wrong: the browser works,
+#    it is simply not focused right now.
+for other in ("qpdfview.local.qpdfview", "com.anthropic.Claude"):
+    _, output = run([FocusChanged(app="brave-browser", window_id="3", title="Brave")]
+                    + tabs("bv", "chromium", 1)
+                    + [FocusChanged(app=other, window_id="4", title="x")]
+                    + tabs("bv", "chromium", 12, 50))
+
+    assert output == "", f"complained with {other} focused: {output!r}"
+
+# ---- binding once buys permanent silence -----------------------------
+
+# The rule that kills the last category. A connection that has ever bound
+# has proven its class is recognised, so it can never be the unsupported
+# case - which stops an ordinary browser being accused during the window
+# before it is first focused.
+_, output = run([FocusChanged(app="brave-browser", window_id="3", title="Brave")]
+                + tabs("bv", "chromium", 1)
+                + [FocusChanged(app="something_unknown", window_id="7", title="?")]
+                + tabs("bv", "chromium", 40, 100))
+
+assert output == "", f"accused a connection that had already bound: {output!r}"
+
 # ---- a recognised app is never reported ------------------------------
 
 # The fixed spelling must produce silence, which is what distinguishes
