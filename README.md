@@ -361,12 +361,6 @@ from `browser/`. Without one, that browser still works at the window
 level - you just get one entry for the whole browser rather than one per
 tab.
 
-**Give it a minute after restarting the daemon.** Extensions do not
-notice the socket dying; each reconnects on its own timer, and a minute
-is the worst case. Until then that browser reports nothing and shows a
-single window-level row, which looks exactly like an extension that is
-not working.
-
 The two browser builds install differently, and only one is ready to use
 as it sits in the repository. Thunderbird uses the same mechanism and
 needs a little more, so it has its own section below.
@@ -520,6 +514,22 @@ Two settings, both matters of feel rather than correctness:
 Working, and in daily use by its author, which is where most of its bug
 reports come from. Non-supported applications will behave like traditional
 Alt+Tab.
+
+### Known quirks
+
+**A browser takes up to a minute to come back after the daemon
+restarts.** Extensions are not told the socket died; each reconnects on
+its own timer, and a minute is the worst case. Until then that browser
+reports nothing and shows a single window-level row - indistinguishable
+from an extension that is not working, which is the whole problem with
+it. Wait before concluding anything.
+
+**Tab-level support depends on the exact name KWin gives a window.** An
+unlisted browser gets window-level navigation, and the same application
+can report a different name depending on how it was packaged - the
+Thunderbird snap and deb differ, and Opera capitalises where its siblings
+do not. The daemon names the string it saw when this happens; see
+[What it can navigate](#what-it-can-navigate).
 
 [`TODO.md`](TODO.md) is the honest list of what is outstanding, what is
 known-broken, and what has been deliberately left alone.

@@ -136,6 +136,9 @@ list, not an archive.
 
 ## Worth watching in use
 
+Things that are fixed but whose fix is thin, or that would be quiet if
+they came back.
+
 - **`websockets.server.serve` is deprecated** and warns on every apt
   build. Still present and working in 15.0.1 and 17.0.1 - proven on
   2026-08-21 with a real TLS bind and round trip under apt's 15.0.1, not
@@ -143,9 +146,6 @@ list, not an archive.
   replacement is `websockets.asyncio.server`. Nothing forces the move
   yet; the day it does, the daemon stops starting rather than degrading,
   so it is worth doing before a release rather than after a report.
-
-Things that are fixed but whose fix is thin, or that would be quiet if
-they came back.
 
 - **A browser session restore filling the switcher with pages you never
   opened.** Fixed 2026-08-19 by guarding `tabs.onUpdated` on `tab.active`
@@ -175,6 +175,66 @@ they came back.
 ## Done
 
 Dates are when it was confirmed working, not when it was written.
+
+- **2026-08-23** - Opera supported, the seventh application and the first
+  added by following the diagnostic rather than investigating. It reports
+  `Opera`, capitalised where every sibling is lowercase; the set is
+  matched exactly, so the case is as load-bearing as the spelling. Both
+  spellings are pinned, including that lowercase `opera` must NOT bind,
+  so the real one cannot decay into an untested guess.
+
+  Answered while adding it: should the table just say "Chromium-based
+  browsers"? No. The extension does work in any of them, but a window is
+  identified by the exact name KWin reports, so the general claim would
+  be false for every browser nobody had checked. The table stays specific
+  and the README now says how to extend it.
+
+- **2026-08-23** - Escape from the chooser raises nothing when nothing
+  was focused. Minimise everything, hold, Escape, and a window used to
+  come back.
+
+  Cancelling raises the entry the gesture started on deliberately - the
+  panel takes keyboard focus and closing it has to hand focus back. That
+  assumes the gesture started FROM a focused window. The daemon could not
+  tell: KWin fires `windowActivated(null)` when the last window is
+  minimised, and the script dropped it, so "nothing is focused" was
+  indistinguishable from "unchanged". The script now emits a `blur`
+  event and `FocusLost` clears the current window.
+
+  History is deliberately untouched by a blur - those windows still exist
+  and Meta+Tab out of an empty desktop is exactly what has to keep
+  working.
+
+- **2026-08-23** - The discard diagnostic was made honest, one day after
+  shipping. It produced four complaints in a day, every one describing
+  correct behaviour as breakage, including `firefox_firefox` - a class
+  added the day before.
+
+  Worth keeping because the lesson is not "there was a bug". Discarding
+  has three causes and only one is a fault; the first version reported
+  all three with the wording of the first. That is exactly the cry-wolf
+  failure the design notes argued was worse than no diagnostic at all,
+  committed by the person who wrote the argument. All four journal lines
+  are now tests.
+
+  Found because a question about Opera sent someone to the journal. Not
+  because the daemon was suspected of anything - which is the point: a
+  noisy diagnostic is not self-reporting.
+
+- **2026-08-22** - History capped at 20 entries, and the dead-id sets
+  stopped leaking. Raised as a memory-safety worry, which it was not:
+  entries are a few hundred bytes and Python cannot corrupt memory by
+  holding a long list. Measuring it found the real problem next door -
+  `_dead_windows` only ever grew, so every window and tab closed since
+  the daemon started left a permanent trace. 2000 opened-and-closed tabs
+  left 2000 entries and 2000 dead ids; now 20 and 20.
+
+  Dead entries are evicted first, which is what makes a small cap safe:
+  they are skipped rather than removed, so a cap counting them would not
+  be a cap on places you can reach.
+
+  The cap is 20 because deep history has no use, not because it is
+  expensive - the thirtieth entry is quicker to reach with the mouse.
 
 - **2026-08-21** - The daemon says so when it discards tab events. One
   line, once per (resource class, family) pair, naming both facts and
