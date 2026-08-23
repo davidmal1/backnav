@@ -221,4 +221,38 @@ for spelling in ("thunderbird", "thunderbird_thunderbird"):
         f"{spelling}: tab event discarded, got {items(engine)}"
     )
 
+# 6. Opera, whose class is capitalised where its siblings are not.
+#
+#    Confirmed live 2026-08-23 as "Opera" - not "opera", not
+#    "opera-stable". The set is matched exactly, so the case is as
+#    load-bearing as the spelling, and getting it wrong fails the silent
+#    way: the extension connects and reports tabs, and every one is
+#    discarded. Vivaldi-snap already set the precedent.
+engine = NavigationEngine(event_bus)
+
+event_bus.publish(FocusChanged(app="Opera", window_id="opera-win", title="Opera"))
+event_bus.publish(BrowserTabChanged(
+    browser="chromium", connection_id="op-1", window_id=1, tab_id=4,
+    title="Opera Tab",
+))
+
+assert engine._kwin_window_for_browser_window.get(("op-1", 1)) == "opera-win", (
+    "Opera did not bind - check the capital O"
+)
+assert engine.current.title == "Opera Tab", f"got {items(engine)}"
+
+# Lowercase is NOT what KWin reports, so it must not silently work and
+# leave the real spelling untested.
+engine = NavigationEngine(event_bus)
+
+event_bus.publish(FocusChanged(app="opera", window_id="lower", title="Opera"))
+event_bus.publish(BrowserTabChanged(
+    browser="chromium", connection_id="op-2", window_id=1, tab_id=5,
+    title="Opera Tab",
+))
+
+assert ("op-2", 1) not in engine._kwin_window_for_browser_window, (
+    "lowercase 'opera' bound, so the set is not being matched exactly"
+)
+
 print("cross-app tab misattribution OK")

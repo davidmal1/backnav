@@ -36,6 +36,11 @@ TAB_EXTENSION_APPS_BY_FAMILY = {
         "chromium-browser",
         "chromium",
         "microsoft-edge",
+        # Capitalised, and that is not a typo - Opera reports "Opera"
+        # where its siblings report lowercase. Seen live 2026-08-23. The
+        # set is matched exactly, so the case matters as much as the
+        # spelling; compare Vivaldi-snap above.
+        "Opera",
     },
     "firefox": {
         "firefox",
