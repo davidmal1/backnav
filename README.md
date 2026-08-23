@@ -72,22 +72,11 @@ switching between a handful of things all day.
 
 **History keeps the 20 most recent places, and that is deliberate.**
 BackNav's value is at the shallow end - the last few things you were
-doing, where you know what you want and reaching for it beats looking for
-it. Something you last touched days and thirty entries ago is quicker to
-click on, and no amount of tapping or scrolling past an eight-row panel
-changes that. Twenty is already well past the point where the mouse wins.
+doing.
 
-Holding the shortcut looks like this:
+This video shows BackNav in action.
 
-![The BackNav switcher panel showing eight entries - two Kate documents,
-three Konsole tabs, two Thunderbird tabs and a Brave tab - each with its
-application icon, ordered by how recently it was
-used](docs/overlay.png)
-
-Eight rows, and not one of them is a window. Two documents open in Kate,
-three Konsole tabs, two Thunderbird tabs and a browser tab, ordered by
-when you last touched them rather than grouped by application. Alt+Tab
-looking at the same desktop shows four icons.
+https://github.com/user-attachments/assets/7021c8de-8847-4253-8a11-5490cbdf76d3
 
 ## What it can navigate
 
