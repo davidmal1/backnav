@@ -520,16 +520,7 @@ Alt+Tab.
 **A browser takes up to a minute to come back after the daemon
 restarts.** Extensions are not told the socket died; each reconnects on
 its own timer, and a minute is the worst case. Until then that browser
-reports nothing and shows a single window-level row - indistinguishable
-from an extension that is not working, which is the whole problem with
-it. Wait before concluding anything.
-
-**Tab-level support depends on the exact name KWin gives a window.** An
-unlisted browser gets window-level navigation, and the same application
-can report a different name depending on how it was packaged - the
-Thunderbird snap and deb differ, and Opera capitalises where its siblings
-do not. The daemon names the string it saw when this happens; see
-[What it can navigate](#what-it-can-navigate).
+reports nothing and shows a single window-level row.
 
 [`TODO.md`](TODO.md) is the honest list of what is outstanding, what is
 known-broken, and what has been deliberately left alone.
