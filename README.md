@@ -361,6 +361,12 @@ from `browser/`. Without one, that browser still works at the window
 level - you just get one entry for the whole browser rather than one per
 tab.
 
+**Give it a minute after restarting the daemon.** Extensions do not
+notice the socket dying; each reconnects on its own timer, and a minute
+is the worst case. Until then that browser reports nothing and shows a
+single window-level row, which looks exactly like an extension that is
+not working.
+
 The two browser builds install differently, and only one is ready to use
 as it sits in the repository. Thunderbird uses the same mechanism and
 needs a little more, so it has its own section below.
