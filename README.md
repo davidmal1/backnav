@@ -87,22 +87,11 @@ Everything else still works at the window level. Nothing needs to be on
 this list for BackNav to be useful. The list is about how *deep* it can
 go.
 
-**Other Chromium-based browsers are one line away.** The extension itself
-works in any of them, but BackNav identifies a window by the exact name
-KWin reports for it, so an unlisted browser gets window-level navigation
-until its name is added. The daemon says which name it saw:
-
-```
-backnav: discarding chromium tab events - no extension family claims the
-focused window class 'Opera'. If that is a chromium window, its class
-needs adding to TAB_EXTENSION_APPS_BY_FAMILY
-```
-
-Add that string to the list in `backnav-engine/core/navigation_engine.py`
-and restart the daemon. Every browser above was added exactly that way,
-which is why the table names them individually rather than promising
-"any Chromium browser" - the promise would be false until someone checked.
-Opera reports `Opera`, capitalised, where its siblings are lowercase.
+**Other Chromium-based browsers are one line away.** The extension works
+in any of them, but BackNav identifies a window by the exact name KWin
+reports, so an unlisted browser gets window-level navigation until that
+name is added - see [Adding a
+browser](docs/probing.md#adding-a-browser).
 
 **qpdfview is on that list and Okular isn't, which is worth explaining.**
 Okular is the PDF viewer Kubuntu ships and the one most people already

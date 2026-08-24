@@ -34,6 +34,33 @@ So the honest rule is: an app is supportable when it offers a way to say
 "switch to this, if it still exists" and do nothing otherwise. Plenty of
 applications simply do not.
 
+## Adding a browser
+
+A Chromium-based browser that is not in the README's table needs no
+investigation at all - the extension already works in it. What is
+missing is the name KWin gives its windows, which is how BackNav decides
+which window a tab event belongs to.
+
+The daemon says which name it saw, once, rather than leaving you to
+find it:
+
+```
+backnav: discarding chromium tab events - no extension family claims the
+focused window class 'Opera'. If that is a chromium window, its class
+needs adding to TAB_EXTENSION_APPS_BY_FAMILY
+```
+
+Add that string to the matching family in
+`backnav-engine/core/navigation_engine.py` and restart the daemon. The
+set is matched exactly, so the case matters as much as the spelling:
+Opera reports `Opera` where its siblings are lowercase, and the
+Thunderbird snap reports `thunderbird_thunderbird` where the deb reports
+`thunderbird`.
+
+Every browser in the table was added that way, which is why it names
+them individually rather than promising "any Chromium browser" - the
+promise would be false for every browser nobody had checked.
+
 ## The procedure
 
 **1. Does it expose D-Bus at all?** With the app running:
