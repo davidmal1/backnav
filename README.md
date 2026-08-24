@@ -128,8 +128,7 @@ If you later want the old behaviour back, *Walk Through Windows* has a
 ### Navigate Forward is optional
 
 Bind it only if it suits how you work. It does exactly one thing: undo an
-overshoot while a walk is still open. Outside a walk it does nothing at
-all, so it is not a browser's forward button despite the name.
+overshoot while a walk is still open.
 
 ## Why the browsers need an extension
 
