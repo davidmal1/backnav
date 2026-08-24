@@ -11,17 +11,11 @@ For KDE Plasma on Wayland.
 
 ## The problem
 
-Alt+Tab has switched *windows* since Windows 3.x, around 1990. It was
-exactly the right design then: one window really was one thing you were
-doing.
-
-Tabs did not exist yet. Browsers would not popularise them for another
-decade, and it would be years after that before working in a dozen tabs
-at once became normal. Alt+Tab is a solution from before the problem, and
-it has never been updated to notice.
-
-The problem is that a browser with thirty tabs open is one window. A
-Konsole with six sessions is one window.
+Alt+Tab has switched *windows* since Windows 3.x, around 1990. Tabs did
+not exist yet. Browsers would not popularise them for another decade, and
+it would be years after that before working in a dozen tabs at once
+became normal. The problem is that a browser with thirty tabs open is one
+window. A Konsole with six sessions is one window.
 
 Consider working on Tab-1, then Tab-2, then wanting to go back to Tab-1.
 When you Alt+Tab "back to what I was last doing", you land on an entirely
@@ -38,9 +32,7 @@ knowing.
 Between them, then, you are asked to work out where you are going before
 you can choose how to get there: inside this application or outside it,
 one key or the other, and the wrong guess takes you somewhere unrelated.
-That is a question you should never have to answer, because you already
-know the answer in the only form that matters - you remember the thing,
-not which window contains it. Consistency is king.
+Consistency is king.
 
 BackNav keeps a most-recently-used trail across windows *and* the tabs
 inside them, and gives you one shortcut to walk back along it, whichever
