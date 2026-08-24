@@ -106,12 +106,12 @@ Opera reports `Opera`, capitalised, where its siblings are lowercase.
 
 **qpdfview is on that list and Okular isn't, which is worth explaining.**
 Okular is the PDF viewer Kubuntu ships and the one most people already
-have. It cannot be supported, for the reason under "Why some apps can't
-be supported" below.
-qpdfview was adopted instead, not because it is better, but because it
-is the tabbed PDF viewer that *can* be driven correctly. If you want
-document-level navigation in a PDF viewer, you will have to install it
-deliberately; it will not already be there.
+have; it cannot be supported, for the reason in [Why some apps can't be
+supported](docs/probing.md#why-some-apps-cant-be-supported). qpdfview was
+adopted instead, not because it is better, but because it is the tabbed
+PDF viewer that *can* be driven correctly. If you want document-level
+navigation in a PDF viewer, you will have to install it deliberately; it
+will not already be there.
 
 ## Can it replace Alt+Tab entirely?
 
@@ -140,21 +140,13 @@ If you later want the old behaviour back, *Walk Through Windows* has a
 
 Bind it only if it suits how you work. It does exactly one thing: undo an
 overshoot while a walk is still open. Outside a walk it does nothing at
-all, so it is not a browser's forward button despite the name - it is
-`Alt+Shift+Tab`.
-
-That is worth having if you tap quickly and sometimes go one too far.
-Without it the recovery is clumsy: let the gesture settle, and the entry
-you overshot onto is now the most recent, so getting where you meant
-takes two taps in the other direction.
+all, so it is not a browser's forward button despite the name.
 
 If you do bind it, make it the **shifted variant of Navigate Back** -
-`Meta+Shift+Tab` alongside `Meta+Tab`, or `Alt+Shift+Tab` alongside
-`Alt+Tab`. The entire value is correcting mid-gesture without moving your
-hand, which a key somewhere else cannot offer.
+`Meta+Shift+Tab` alongside `Meta+Tab`. The entire value is correcting
+mid-gesture without moving your hand.
 
-And if you never overshoot, leave it unbound. Nothing breaks: the action
-is registered either way, and an unbound one is simply inert.
+Leave it unbound and nothing breaks: an unbound action is simply inert.
 
 ## Why the browsers need an extension
 
@@ -188,33 +180,6 @@ already expose enough over D-Bus to ask them directly. kitty needs none
 either, though it is not a KDE application and speaks no D-Bus at all -
 it has its own remote-control protocol, which is richer than most of the
 D-Bus interfaces here.
-
-## Why some apps can't be supported
-
-Adding an app takes three things, and most apps have one or two:
-
-1. **A signal that a tab changed.** Usually the window title changing is
-   enough.
-2. **A way to ask which tab is open now**, that returns something
-   restorable.
-3. **A way to switch to a specific tab, without creating it.**
-
-The third is where apps fall down, and **Okular** is the example worth
-naming. Its tab-opening call adds a new tab even when the file is already
-open in one, so "go back to that document" would silently duplicate it
-rather than switch to it. A navigation that quietly changes your
-workspace is worse than no navigation, so it is left at the window level.
-
-That is not a fault peculiar to Okular. Kate had exactly the same
-problem: `openUrl` reopened documents that had been closed. It is only
-supported because Kate happens to *also* expose a non-creating
-`activate(token)` call. qpdfview needed a similar hunt. Of its three
-open methods, two would have destroyed or duplicated a tab, and only the
-third searches existing tabs first.
-
-So the honest rule is: an app is supportable when it offers a way to say
-"switch to this, if it still exists" and do nothing otherwise. Plenty of
-applications simply do not.
 
 ## "Can you support my favourite app?"
 

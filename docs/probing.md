@@ -7,6 +7,35 @@ anything about this codebase. Every app on the supported list was worked
 out this way, and every step below exists because some app defeated the
 previous version of it.
 
+## Why some apps can't be supported
+
+Adding an app takes three things, and most apps have one or two:
+
+1. **A signal that a tab changed.** Usually the window title changing is
+   enough.
+2. **A way to ask which tab is open now**, that returns something
+   restorable.
+3. **A way to switch to a specific tab, without creating it.**
+
+The third is where apps fall down, and **Okular** is the example worth
+naming. Its tab-opening call adds a new tab even when the file is already
+open in one, so "go back to that document" would silently duplicate it
+rather than switch to it. A navigation that quietly changes your
+workspace is worse than no navigation, so it is left at the window level.
+
+That is not a fault peculiar to Okular. Kate had exactly the same
+problem: `openUrl` reopened documents that had been closed. It is only
+supported because Kate happens to *also* expose a non-creating
+`activate(token)` call. qpdfview needed a similar hunt. Of its three
+open methods, two would have destroyed or duplicated a tab, and only the
+third searches existing tabs first.
+
+So the honest rule is: an app is supportable when it offers a way to say
+"switch to this, if it still exists" and do nothing otherwise. Plenty of
+applications simply do not.
+
+## The procedure
+
 **1. Does it expose D-Bus at all?** With the app running:
 
 ```bash
