@@ -61,6 +61,39 @@ Every browser in the table was added that way, which is why it names
 them individually rather than promising "any Chromium browser" - the
 promise would be false for every browser nobody had checked.
 
+### Packaging can change the name, and there is no rule
+
+The same application can report a different class depending on how it
+was installed. What it cannot do is let you predict which:
+
+| build | class |
+| --- | --- |
+| Firefox, snap | `firefox_firefox` |
+| Thunderbird, snap | `thunderbird_thunderbird` |
+| Thunderbird, deb | `thunderbird` |
+| Chromium, snap | `chromium` |
+| Vivaldi, snap | `Vivaldi-snap` |
+| Brave, flatpak | `brave-browser` |
+
+Three snaps, three conventions. Mozilla's double the name, Canonical's
+Chromium leaves it alone, Vivaldi's invents a third form - and the one
+Flatpak checked is identical to the native build, so sandboxing implies
+nothing either.
+
+That table was assembled by getting it wrong twice on 2026-08-23.
+Flatpak was predicted to use reverse-DNS names like `com.brave.Browser`;
+it does not. The Chromium snap was then predicted to be
+`chromium_chromium` by analogy with Firefox; it is not. Both predictions
+were reasonable and both were wrong, and each cost an install.
+
+So do not reason about it. Ask KWin, which takes ten seconds - focus the
+window, click away and back:
+
+```bash
+journalctl --user -u plasma-kwin_wayland.service -f -n 0 -o cat \
+    | grep -o '"app":"[^"]*"'
+```
+
 ## The procedure
 
 **1. Does it expose D-Bus at all?** With the app running:
