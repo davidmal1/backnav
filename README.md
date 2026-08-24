@@ -142,12 +142,6 @@ Bind it only if it suits how you work. It does exactly one thing: undo an
 overshoot while a walk is still open. Outside a walk it does nothing at
 all, so it is not a browser's forward button despite the name.
 
-If you do bind it, make it the **shifted variant of Navigate Back** -
-`Meta+Shift+Tab` alongside `Meta+Tab`. The entire value is correcting
-mid-gesture without moving your hand.
-
-Leave it unbound and nothing breaks: an unbound action is simply inert.
-
 ## Why the browsers need an extension
 
 A browser tab is not a window. It has no entry in the compositor, no
