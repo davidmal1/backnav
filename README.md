@@ -249,6 +249,23 @@ Three pieces, because the information lives in three places:
 
 Requires KDE Plasma 6 on Wayland, and Python 3.
 
+```bash
+git clone https://github.com/davidmal1/backnav.git
+cd backnav
+./install.sh
+```
+
+That installs the dependencies, both KWin scripts, and the daemon as a
+user service, and is safe to re-run. It stops short of three things it
+should not decide for you - which shortcut to bind, which browser
+extensions you want, and the per-application settings - and prints them
+at the end.
+
+The rest of this section is what the script does, for anyone who would
+rather do it by hand or wants to know what it touched.
+
+### Installing it by hand
+
 Start with the tools and the daemon's two dependencies:
 
 ```bash
