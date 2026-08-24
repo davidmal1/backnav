@@ -176,6 +176,39 @@ they came back.
 
 Dates are when it was confirmed working, not when it was written.
 
+- **2026-08-23** - `install.sh`, verified on the VM including a reboot.
+  Three commands from a clone to a running daemon: dependencies, both
+  KWin scripts, enabling them, and the user service.
+
+  It stops at the three things that are choices rather than steps -
+  which shortcut to bind, which browsers you use, the per-application
+  settings - and prints them instead of guessing. Binding a key silently
+  would be the worst of them, since Alt+Tab collides with KWin's own
+  switcher and KDE has to ask.
+
+  The reboot is what makes this stronger than the manual install entry
+  above, because it proved three things a restart cannot:
+  `WantedBy=graphical-session.target` really does fire at login; KWin
+  loads both scripts from the INSTALLED package on a cold session, which
+  is the first time the packaged event producer has run anywhere - this
+  machine is still on a copy hot-loaded via `loadScript`, so the blur fix
+  had never been proven from a real package load; and the shortcut
+  binding survives, which the script deliberately never writes.
+
+  The generated unit was diffed against the hand-written one on that
+  machine and differs only in the Description string. Every functional
+  line matches, which is the evidence that it reproduces the right thing
+  rather than merely something that starts.
+
+  Built because install friction is the weakest point before a wider
+  audience. Nine visitors will not expose it; four hundred will, and the
+  first comment would have been about the systemd unit.
+
+  `BACKNAV_PYTHON` overrides the interpreter the unit names, for anyone
+  keeping the dependencies in a virtualenv - which is this machine, and
+  is why running the script here unmodified would have broken a working
+  setup rather than fixing anyone's.
+
 - **2026-08-23** - Opera supported, the seventh application and the first
   added by following the diagnostic rather than investigating. It reports
   `Opera`, capitalised where every sibling is lowercase; the set is
