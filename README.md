@@ -692,3 +692,8 @@ because a non-creating `activate(token)` happens to be there. qpdfview
 needed its own database read plus a caption heuristic. So the honest
 expectation is that support is possible when the application cooperates,
 and that many do not.
+
+## License
+
+GPL-3.0 - see [LICENSE](LICENSE). The same licence KWin itself uses,
+which is the sensible default for something that runs inside it.
