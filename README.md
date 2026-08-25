@@ -372,9 +372,6 @@ restarts.** Extensions are not told the socket died; each reconnects on
 its own timer, and a minute is the worst case. Until then that browser
 reports nothing and shows a single window-level row.
 
-[`TODO.md`](TODO.md) is the honest list of what is outstanding, what is
-known-broken, and what has been deliberately left alone.
-
 ## License
 
 GPL-3.0 - see [LICENSE](LICENSE). The same licence KWin itself uses,

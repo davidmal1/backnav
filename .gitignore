@@ -20,3 +20,8 @@ browser/.keys
 
 # Build artifacts - produced by browser/build-xpi.sh on demand.
 browser/*.xpi
+
+# Working notes - kept locally, not part of what is published. The file
+# still exists in this checkout and in history up to 801ad9c; this only
+# stops future versions being committed.
+TODO.md
